@@ -1,0 +1,220 @@
+import { Server, Socket } from 'socket.io';
+import jwt from 'jsonwebtoken';
+import Message from '../models/messageModel';
+import Conversation from '../models/conversationModel';
+import Group from '../models/groupModel';
+import User from '../models/userModel';
+import { sendMessageNotification } from '../services/notificationService';
+
+interface AuthenticatedSocket extends Socket {
+  userId?: string;
+}
+
+let io: Server;
+
+export const getIO = (): Server => {
+  if (!io) {
+    throw new Error('Socket.IO not initialized');
+  }
+  return io;
+};
+
+export const setupSocketHandlers = (ioInstance: Server) => {
+  io = ioInstance;
+  // Middleware d'authentification Socket.IO
+  io.use((socket: AuthenticatedSocket, next) => {
+    const token = socket.handshake.auth.token;
+
+    if (!token) {
+      return next(new Error('Authentication error'));
+    }
+
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key') as {
+        userId: string;
+      };
+      socket.userId = decoded.userId;
+      next();
+    } catch (error) {
+      next(new Error('Authentication error'));
+    }
+  });
+
+  io.on('connection', (socket: AuthenticatedSocket) => {
+
+    // Rejoindre les rooms des conversations de l'utilisateur
+    socket.on('join_conversation', async (conversationId: string) => {
+      try {
+        // Vérifier que l'utilisateur fait partie de la conversation ou du groupe
+        const conversation = await Conversation.findById(conversationId);
+        const group = await Group.findById(conversationId);
+        
+        const hasAccess = 
+          (conversation && conversation.participants.some((id) => id.toString() === socket.userId)) ||
+          (group && group.members.some((id) => id.toString() === socket.userId));
+        
+        if (hasAccess) {
+          socket.join(conversationId);
+        } else {
+          console.log(`User ${socket.userId} denied access to ${conversationId}`);
+        }
+      } catch (error) {
+        console.error('Join conversation error:', error);
+      }
+    });
+
+    // Quitter une conversation
+    socket.on('leave_conversation', (conversationId: string) => {
+      socket.leave(conversationId);
+    });
+
+    // Envoyer un message
+    socket.on('send_message', async (data: { conversationId: string; content: string }) => {
+      try {
+        const { conversationId, content } = data;
+
+        // Valider que le contenu n'est pas vide
+        if (!content || !content.trim()) {
+          socket.emit('error', { message: 'Le message ne peut pas être vide' });
+          return;
+        }
+
+        // Vérifier que l'utilisateur fait partie de la conversation ou du groupe
+        const conversation = await Conversation.findById(conversationId);
+        const group = await Group.findById(conversationId);
+
+        const hasAccess = 
+          (conversation && conversation.participants.some((id) => id.toString() === socket.userId)) ||
+          (group && group.members.some((id) => id.toString() === socket.userId));
+
+        if (!hasAccess) {
+          socket.emit('error', { message: 'Accès non autorisé' });
+          return;
+        }
+
+        // Créer le message
+        const messageData: any = {
+          sender: socket.userId,
+          content: content.trim(),
+        };
+
+        // Ajouter conversation ou group selon le cas
+        if (conversation) {
+          messageData.conversation = conversationId;
+        } else {
+          messageData.group = conversationId;
+        }
+
+        const message = await Message.create(messageData);
+
+        // Peupler les infos du sender
+        await message.populate('sender', 'name avatar');
+
+        // Mettre à jour la conversation (seulement pour les conversations 1-à-1)
+        if (conversation) {
+          await Conversation.findByIdAndUpdate(conversationId, {
+            lastMessage: content.trim(),
+            lastMessageAt: new Date(),
+          });
+        }
+
+        // Convertir en objet simple pour s'assurer que tous les champs sont envoyés
+        const messageObject = message.toObject();
+
+        // Envoyer le message à tous les participants
+        io.to(conversationId).emit('new_message', messageObject);
+
+        // Envoyer une notification push
+        if (conversation) {
+          // Notification pour conversation 1-à-1
+          const recipientId = conversation.participants.find(
+            (id) => id.toString() !== socket.userId
+          );
+
+          if (recipientId) {
+            // Vérifier si le destinataire est connecté et dans la conversation
+            const recipientSockets = await io.in(conversationId).fetchSockets();
+            const isRecipientInConversation = recipientSockets.some(
+              (s: any) => s.userId === recipientId.toString()
+            );
+
+            // Envoyer la notification seulement si le destinataire n'est PAS dans la conversation
+            if (!isRecipientInConversation) {
+              const recipient = await User.findById(recipientId);
+              
+              if (recipient && recipient.pushToken) {
+                const sender = await User.findById(socket.userId);
+                if (sender) {
+                  await sendMessageNotification(
+                    recipient.pushToken,
+                    sender.name,
+                    content.trim(),
+                    conversationId
+                  );
+                }
+              } else {
+                console.log('No push token available for recipient');
+              }
+            } else {
+              console.log('Recipient is in conversation, skipping notification');
+            }
+          }
+        } else if (group) {
+          // Notification pour groupe
+          const sender = await User.findById(socket.userId);
+          
+          if (sender) {
+            // Récupérer tous les membres du groupe sauf l'expéditeur
+            const groupMembers = group.members.filter(
+              (memberId) => memberId.toString() !== socket.userId
+            );
+
+            // Récupérer les sockets connectés dans ce groupe
+            const connectedSockets = await io.in(conversationId).fetchSockets();
+            const connectedUserIds = connectedSockets.map((s: any) => s.userId);
+
+            // Envoyer une notification à chaque membre qui n'est PAS dans la conversation
+            for (const memberId of groupMembers) {
+              const memberIdString = memberId.toString();
+              
+              // Ne pas envoyer si le membre est actuellement dans la conversation
+              if (!connectedUserIds.includes(memberIdString)) {
+                const member = await User.findById(memberId);
+                
+                if (member && member.pushToken) {
+                  // Format du message : "[Nom du groupe] Nom: Message"
+                  const notificationTitle = group.name || 'Groupe';
+                  const notificationBody = `${sender.name}: ${content.trim()}`;
+                  
+                  await sendMessageNotification(
+                    member.pushToken,
+                    notificationTitle,
+                    notificationBody,
+                    conversationId
+                  );
+                }
+              }
+            }
+          }
+        }
+
+      } catch (error) {
+        console.error('Send message error:', error);
+        socket.emit('error', { message: 'Erreur lors de l\'envoi du message' });
+      }
+    });
+
+    // Typing indicator
+    socket.on('typing', (data: { conversationId: string; isTyping: boolean }) => {
+      socket.to(data.conversationId).emit('user_typing', {
+        userId: socket.userId,
+        isTyping: data.isTyping,
+      });
+    });
+
+    // Déconnexion
+    socket.on('disconnect', () => {
+      console.log(`User disconnected: ${socket.userId}`);
+    });
+  });
+};
