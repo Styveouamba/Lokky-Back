@@ -12,7 +12,7 @@ services:
     environment:
       - NODE_ENV=development
       - PORT=3000
-      - MONGODB_URI=mongodb://mongo:27017/lokky
+      - MONGODB_URI=mongodb+srv://admin_styve:Cordialement_17@cluster0.w2oaucm.mongodb.net/Lokky?retryWrites=true&w=majority&appName=Cluster0
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET}
       - JWT_EXPIRES_IN=7d
@@ -63,9 +63,9 @@ services:
     ports:
       - "8082:8081"
     environment:
-      - ME_CONFIG_MONGODB_URL=mongodb://mongo:27017/
-      - ME_CONFIG_BASICAUTH_USERNAME=admin
-      - ME_CONFIG_BASICAUTH_PASSWORD=admin123
+      - ME_CONFIG_MONGODB_URL=mongodb+srv://admin_styve:Cordialement_17@cluster0.w2oaucm.mongodb.net/Lokky?retryWrites=true&w=majority&appName=Cluster0
+      - ME_CONFIG_BASICAUTH_USERNAME=admin_styve
+      - ME_CONFIG_BASICAUTH_PASSWORD=Cordialement_17
     depends_on:
       - mongo
     networks:
