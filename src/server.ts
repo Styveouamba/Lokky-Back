@@ -7,6 +7,7 @@ import { logger } from './utils/logger';
 import { setupSocketHandlers } from './socket/socketHandler';
 import { createIndexes } from './utils/createIndexes';
 import { startScheduler } from './utils/scheduler';
+import { cacheService } from './services/cacheService';
 
 dotenv.config();
 
@@ -27,11 +28,24 @@ const io = new Server(httpServer, {
 // Setup des handlers Socket.IO
 setupSocketHandlers(io);
 
-// Connexion MongoDB
-mongoose
-  .connect(MONGODB_URI)
-  .then(async () => {
+// Connexion MongoDB et Redis
+async function startServer() {
+  try {
+    // Connexion MongoDB
+    await mongoose.connect(MONGODB_URI);
     logger.info('✅ Connecté à MongoDB');
+    
+    // Connexion Redis (optionnel, ne bloque pas le démarrage)
+    try {
+      await cacheService.connect();
+      if (cacheService.isAvailable()) {
+        logger.info('✅ Connecté à Redis');
+      } else {
+        logger.warn('⚠️  Redis non disponible - fonctionnement sans cache');
+      }
+    } catch (error) {
+      logger.warn('⚠️  Redis non disponible - fonctionnement sans cache');
+    }
     
     // Créer les index
     try {
@@ -39,7 +53,6 @@ mongoose
       logger.info('✅ Index créés avec succès');
     } catch (error) {
       logger.error('⚠️  Erreur lors de la création des index:', error);
-      // Ne pas arrêter le serveur si les index échouent
     }
     
     // Démarrage du serveur
@@ -51,8 +64,25 @@ mongoose
       startScheduler();
       logger.info('⏰ Scheduler démarré');
     });
-  })
-  .catch((error) => {
-    logger.error('❌ Erreur de connexion MongoDB:', error);
+  } catch (error) {
+    logger.error('❌ Erreur de démarrage:', error);
     process.exit(1);
-  });
+  }
+}
+
+// Gestion de l'arrêt propre
+process.on('SIGTERM', async () => {
+  logger.info('SIGTERM reçu, arrêt propre...');
+  await cacheService.disconnect();
+  await mongoose.disconnect();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  logger.info('SIGINT reçu, arrêt propre...');
+  await cacheService.disconnect();
+  await mongoose.disconnect();
+  process.exit(0);
+});
+
+startServer();

@@ -127,9 +127,10 @@ async function sendCompletionNotifications(activity: IActivity): Promise<void> {
         `${activity.title} 🎉`,
         `Comment s'est passée cette activité ? Partage ton expérience avec les autres !`,
         {
-          type: 'activity_completed',
+          type: 'activity_review',
           activityId: activity._id.toString(),
-          groupId: activity.groupId?.toString(),
+          screen: 'review',
+          url: `lokky://review/${activity._id.toString()}`,
         }
       ).catch(error => {
         console.error(`Failed to send notification to ${participant._id}:`, error);

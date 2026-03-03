@@ -10,11 +10,13 @@ import {
   deleteConversation,
 } from '../controllers/messageController';
 import { authMiddleware } from '../middleware/authMiddleware';
+import { checkModerationStatus } from '../middleware/rateLimitMiddleware';
 
 const router = Router();
 
 // Toutes les routes nécessitent l'authentification
 router.use(authMiddleware);
+router.use(checkModerationStatus);
 
 // Récupérer toutes les conversations
 router.get('/conversations', getConversations);

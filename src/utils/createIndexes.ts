@@ -17,19 +17,49 @@ export async function createIndexes() {
     await User.collection.createIndex({ location: '2dsphere' });
     await User.collection.createIndex({ interests: 1 });
     await User.collection.createIndex({ goals: 1 });
+    await User.collection.createIndex({ lastActive: -1 }); // Pour le pré-calcul des rankings
     console.log('✓ User indexes created');
 
-    // Index pour les activités
+    // Index composés pour les activités (optimisés pour les requêtes fréquentes)
+    await Activity.collection.createIndex({ 
+      status: 1,
+      date: 1,
+      _id: 1 
+    }); // Pour pagination avec curseur
+    
     await Activity.collection.createIndex({ 
       location: '2dsphere',
+      status: 1 
+    }); // Pour recherche géographique
+    
+    await Activity.collection.createIndex({ 
+      tags: 1, 
       status: 1,
       date: 1 
-    });
-    await Activity.collection.createIndex({ tags: 1, status: 1 });
-    await Activity.collection.createIndex({ category: 1, status: 1 });
-    await Activity.collection.createIndex({ createdBy: 1, status: 1 });
-    await Activity.collection.createIndex({ date: 1, status: 1 });
-    await Activity.collection.createIndex({ status: 1, createdAt: -1 });
+    }); // Pour filtrage par tags
+    
+    await Activity.collection.createIndex({ 
+      category: 1, 
+      status: 1,
+      date: 1 
+    }); // Pour filtrage par catégorie
+    
+    await Activity.collection.createIndex({ 
+      createdBy: 1, 
+      status: 1,
+      date: -1 
+    }); // Pour activités d'un utilisateur
+    
+    await Activity.collection.createIndex({ 
+      status: 1, 
+      createdAt: -1 
+    }); // Pour tri par fraîcheur
+    
+    await Activity.collection.createIndex({ 
+      participants: 1,
+      status: 1 
+    }); // Pour activités auxquelles un utilisateur participe
+    
     console.log('✓ Activity indexes created');
 
     // Index pour les messages

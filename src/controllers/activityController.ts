@@ -8,6 +8,7 @@ import { AuthRequest } from '../middleware/authMiddleware';
 import { uploadImage } from '../utils/cloudinary';
 import { getIO } from '../socket/socketHandler';
 import * as rankingService from '../services/rankingService';
+import { rankingCacheService } from '../services/rankingCacheService';
 
 export const createActivity = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -59,6 +60,8 @@ export const createActivity = async (req: AuthRequest, res: Response): Promise<v
       .populate('participants', 'name avatar')
       .populate('groupId', 'name avatar');
 
+    // Invalider le cache des rankings
+    await rankingCacheService.invalidateActivityCache(activity._id.toString());
 
     res.status(201).json(populatedActivity);
   } catch (error: any) {
@@ -69,13 +72,20 @@ export const createActivity = async (req: AuthRequest, res: Response): Promise<v
 
 export const getActivities = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { category, tags, maxDistance, ranked } = req.query;
+    const { category, tags, maxDistance, ranked, limit = '20', cursor } = req.query;
+    
+    // Pagination stricte
+    const limitNum = Math.min(parseInt(limit as string, 10), 100); // Max 100 par page
     
     // Ne récupérer que les activités à venir et en cours
-    // Temporairement, accepter aussi 'active' pour la rétrocompatibilité
     const query: any = { 
       status: { $in: ['upcoming', 'ongoing', 'active'] }
     };
+
+    // Pagination avec curseur (plus efficace que skip/limit)
+    if (cursor) {
+      query._id = { $gt: cursor };
+    }
 
     console.log('[getActivities] Query:', JSON.stringify(query));
     console.log('[getActivities] Current date:', new Date().toISOString());
@@ -92,20 +102,22 @@ export const getActivities = async (req: AuthRequest, res: Response): Promise<vo
     let activities = await Activity.find(query)
       .populate('createdBy', 'name avatar')
       .populate('participants', 'name avatar')
-      .sort({ date: 1 });
+      .sort({ _id: 1 }) // Tri par _id pour pagination avec curseur
+      .limit(limitNum + 1) // +1 pour savoir s'il y a une page suivante
+      .lean();
 
-    console.log('[getActivities] Found activities (before date filter):', activities.length);
-    if (activities.length > 0) {
-      activities.forEach((act, idx) => {
-        console.log(`[getActivities] Activity ${idx}:`, {
-          id: act._id,
-          title: act.title,
-          status: act.status,
-          date: act.date,
-          duration: act.duration
-        });
-      });
+    console.log('[getActivities] Found activities:', activities.length);
+
+    // Vérifier s'il y a une page suivante
+    const hasNextPage = activities.length > limitNum;
+    if (hasNextPage) {
+      activities = activities.slice(0, limitNum);
     }
+
+    // Curseur pour la page suivante
+    const nextCursor = hasNextPage && activities.length > 0
+      ? activities[activities.length - 1]._id.toString()
+      : null;
 
     // Filtrer par distance si demandé
     if (maxDistance && req.userId) {
@@ -122,12 +134,26 @@ export const getActivities = async (req: AuthRequest, res: Response): Promise<vo
       }
     }
 
-    // Appliquer le ranking si demandé
+    // Appliquer le ranking avec cache si demandé
     if (ranked === 'true' && req.userId) {
+      // Essayer de récupérer depuis le cache
+      const cachedRanking = await rankingCacheService.getRankedActivitiesForUser(req.userId);
+      
+      if (cachedRanking) {
+        console.log('[getActivities] Using cached ranking');
+        res.json({
+          activities: cachedRanking.slice(0, limitNum),
+          hasNextPage: cachedRanking.length > limitNum,
+          nextCursor: null, // Le cache retourne tout, pas de pagination
+        });
+        return;
+      }
+
+      // Sinon calculer et mettre en cache
       const user = await User.findById(req.userId);
       if (user && user.interests && user.goals && user.location?.coordinates) {
         const rankedActivities = rankingService.rankActivities(
-          activities.map(a => a.toObject()),
+          activities,
           {
             userId: req.userId,
             userInterests: user.interests,
@@ -136,12 +162,23 @@ export const getActivities = async (req: AuthRequest, res: Response): Promise<vo
           }
         );
         
-        res.json(rankedActivities);
+        // Mettre en cache pour les prochaines requêtes
+        await rankingCacheService.setCachedScores(req.userId, rankedActivities);
+        
+        res.json({
+          activities: rankedActivities,
+          hasNextPage,
+          nextCursor,
+        });
         return;
       }
     }
 
-    res.json(activities);
+    res.json({
+      activities,
+      hasNextPage,
+      nextCursor,
+    });
   } catch (error) {
     console.error('Get activities error:', error);
     res.status(500).json({ message: 'Erreur lors de la récupération des activités' });

@@ -17,6 +17,7 @@ import {
   updateActivityStatusEndpoint,
 } from '../controllers/activityController';
 import { authMiddleware } from '../middleware/authMiddleware';
+import { activityCreationRateLimit, checkModerationStatus } from '../middleware/rateLimitMiddleware';
 
 const router = Router();
 
@@ -36,8 +37,9 @@ const upload = multer({
 });
 
 router.use(authMiddleware);
+router.use(checkModerationStatus);
 
-router.post('/', createActivity);
+router.post('/', activityCreationRateLimit, createActivity);
 router.get('/', getActivities);
 router.get('/my-activities', getMyActivities);
 router.get('/past-activities', getUserPastActivities);

@@ -79,6 +79,40 @@ export const setupSocketHandlers = (ioInstance: Server) => {
           return;
         }
 
+        // Rate limiting pour les messages
+        const user = await User.findById(socket.userId);
+        if (user) {
+          const now = new Date();
+          const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
+
+          // Réinitialiser le compteur si la dernière minute est passée
+          if (!user.rateLimit?.lastMessageSent || 
+              new Date(user.rateLimit.lastMessageSent) < oneMinuteAgo) {
+            user.rateLimit = {
+              lastActivityCreated: user.rateLimit?.lastActivityCreated,
+              activitiesCreatedToday: user.rateLimit?.activitiesCreatedToday || 0,
+              messagesLastMinute: 0,
+              lastMessageSent: now,
+            };
+          }
+
+          // Vérifier la limite (30 messages par minute)
+          const MAX_MESSAGES_PER_MINUTE = 30;
+          if ((user.rateLimit?.messagesLastMinute || 0) >= MAX_MESSAGES_PER_MINUTE) {
+            socket.emit('error', { message: 'Vous envoyez trop de messages. Veuillez ralentir.' });
+            return;
+          }
+
+          // Incrémenter le compteur
+          user.rateLimit = {
+            lastActivityCreated: user.rateLimit?.lastActivityCreated,
+            activitiesCreatedToday: user.rateLimit?.activitiesCreatedToday || 0,
+            messagesLastMinute: (user.rateLimit?.messagesLastMinute || 0) + 1,
+            lastMessageSent: now,
+          };
+          await user.save();
+        }
+
         // Vérifier que l'utilisateur fait partie de la conversation ou du groupe
         const conversation = await Conversation.findById(conversationId);
         const group = await Group.findById(conversationId);
@@ -90,6 +124,22 @@ export const setupSocketHandlers = (ioInstance: Server) => {
         if (!hasAccess) {
           socket.emit('error', { message: 'Accès non autorisé' });
           return;
+        }
+
+        // Vérifier si les utilisateurs sont bloqués (pour les conversations 1-à-1)
+        if (conversation) {
+          const { areUsersBlocked } = await import('../controllers/moderationController');
+          const otherUserId = conversation.participants.find(
+            (id) => id.toString() !== socket.userId
+          );
+          
+          if (otherUserId) {
+            const blocked = await areUsersBlocked(socket.userId!, otherUserId.toString());
+            if (blocked) {
+              socket.emit('error', { message: 'Vous ne pouvez pas envoyer de messages à cet utilisateur' });
+              return;
+            }
+          }
         }
 
         // Créer le message
