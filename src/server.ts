@@ -8,6 +8,7 @@ import { setupSocketHandlers } from './socket/socketHandler';
 import { createIndexes } from './utils/createIndexes';
 import { startScheduler } from './utils/scheduler';
 import { cacheService } from './services/cacheService';
+import { initDefaultAdmin } from './utils/initAdmin';
 
 dotenv.config();
 
@@ -53,6 +54,13 @@ async function startServer() {
       logger.info('✅ Index créés avec succès');
     } catch (error) {
       logger.error('⚠️  Erreur lors de la création des index:', error);
+    }
+    
+    // Initialiser l'admin par défaut
+    try {
+      await initDefaultAdmin();
+    } catch (error) {
+      logger.error('⚠️  Erreur lors de l\'initialisation de l\'admin:', error);
     }
     
     // Démarrage du serveur

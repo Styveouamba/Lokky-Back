@@ -82,6 +82,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         email: user.email,
         name: user.name,
         avatar: user.avatar,
+        role: user.role,
         interests: user.interests,
         goals: user.goals,
         location: user.location,
@@ -100,7 +101,7 @@ export const getProfile = async (req: AuthRequest, res: Response): Promise<void>
       return;
     }
 
-    res.json(user);
+    res.json({ user });
   } catch (error) {
     res.status(500).json({ message: 'Erreur lors de la récupération du profil' });
   }
@@ -323,5 +324,128 @@ export const testPushNotification = async (req: AuthRequest, res: Response): Pro
   } catch (error) {
     console.error('Test push notification error:', error);
     res.status(500).json({ message: 'Erreur lors de l\'envoi de la notification de test' });
+  }
+};
+
+// Bloquer un utilisateur
+export const blockUser = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId;
+    const { userId: blockedUserId } = req.params;
+
+    if (!userId) {
+      res.status(401).json({ message: 'Non authentifié' });
+      return;
+    }
+
+    if (!blockedUserId) {
+      res.status(400).json({ message: 'ID utilisateur manquant' });
+      return;
+    }
+
+    // Vérifier qu'on ne se bloque pas soi-même
+    if (userId === blockedUserId) {
+      res.status(400).json({ message: 'Vous ne pouvez pas vous bloquer vous-même' });
+      return;
+    }
+
+    // Vérifier que l'utilisateur à bloquer existe
+    const userToBlock = await User.findById(blockedUserId);
+    if (!userToBlock) {
+      res.status(404).json({ message: 'Utilisateur non trouvé' });
+      return;
+    }
+
+    // Importer le modèle Block
+    const Block = (await import('../models/blockModel')).default;
+
+    // Vérifier si le blocage existe déjà
+    const existingBlock = await Block.findOne({
+      blocker: userId,
+      blocked: blockedUserId,
+    });
+
+    if (existingBlock) {
+      res.status(400).json({ message: 'Utilisateur déjà bloqué' });
+      return;
+    }
+
+    // Créer le blocage
+    const block = await Block.create({
+      blocker: userId,
+      blocked: blockedUserId,
+    });
+
+    // Peupler les données pour la réponse
+    const populatedBlock = await Block.findById(block._id)
+      .populate('blocker', 'name avatar')
+      .populate('blocked', 'name avatar');
+
+    res.status(201).json(populatedBlock);
+  } catch (error) {
+    console.error('Block user error:', error);
+    res.status(500).json({ message: 'Erreur lors du blocage' });
+  }
+};
+
+// Débloquer un utilisateur
+export const unblockUser = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId;
+    const { userId: blockedUserId } = req.params;
+
+    if (!userId) {
+      res.status(401).json({ message: 'Non authentifié' });
+      return;
+    }
+
+    if (!blockedUserId) {
+      res.status(400).json({ message: 'ID utilisateur manquant' });
+      return;
+    }
+
+    // Importer le modèle Block
+    const Block = (await import('../models/blockModel')).default;
+
+    // Trouver et supprimer le blocage
+    const block = await Block.findOneAndDelete({
+      blocker: userId,
+      blocked: blockedUserId,
+    });
+
+    if (!block) {
+      res.status(404).json({ message: 'Blocage non trouvé' });
+      return;
+    }
+
+    res.json({ message: 'Utilisateur débloqué avec succès' });
+  } catch (error) {
+    console.error('Unblock user error:', error);
+    res.status(500).json({ message: 'Erreur lors du déblocage' });
+  }
+};
+
+// Récupérer la liste des utilisateurs bloqués
+export const getBlockedUsers = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId;
+
+    if (!userId) {
+      res.status(401).json({ message: 'Non authentifié' });
+      return;
+    }
+
+    // Importer le modèle Block
+    const Block = (await import('../models/blockModel')).default;
+
+    // Récupérer tous les blocages de l'utilisateur
+    const blocks = await Block.find({ blocker: userId })
+      .populate('blocked', 'name avatar email')
+      .sort({ createdAt: -1 });
+
+    res.json(blocks);
+  } catch (error) {
+    console.error('Get blocked users error:', error);
+    res.status(500).json({ message: 'Erreur lors de la récupération des utilisateurs bloqués' });
   }
 };

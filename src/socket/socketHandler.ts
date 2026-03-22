@@ -41,6 +41,13 @@ export const setupSocketHandlers = (ioInstance: Server) => {
   });
 
   io.on('connection', (socket: AuthenticatedSocket) => {
+    console.log(`[Socket] User ${socket.userId} connected`);
+
+    // Rejoindre la room personnelle de l'utilisateur pour les notifications de modération
+    if (socket.userId) {
+      socket.join(socket.userId);
+      console.log(`[Socket] User ${socket.userId} joined personal room`);
+    }
 
     // Rejoindre les rooms des conversations de l'utilisateur
     socket.on('join_conversation', async (conversationId: string) => {

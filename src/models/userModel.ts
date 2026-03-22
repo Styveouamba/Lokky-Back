@@ -5,6 +5,7 @@ export interface IUser extends Document {
   password: string;
   name: string;
   avatar?: string;
+  role: 'user' | 'admin';
   authProvider: 'email' | 'apple';
   appleId?: string;
   interests?: string[];
@@ -61,6 +62,11 @@ const userSchema = new Schema<IUser>(
     },
     avatar: {
       type: String,
+    },
+    role: {
+      type: String,
+      enum: ['user', 'admin'],
+      default: 'user',
     },
     authProvider: {
       type: String,

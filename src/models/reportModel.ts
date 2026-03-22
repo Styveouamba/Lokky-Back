@@ -10,7 +10,7 @@ export interface IReport extends Document {
   status: 'pending' | 'reviewed' | 'resolved' | 'dismissed';
   reviewedBy?: mongoose.Types.ObjectId;
   reviewedAt?: Date;
-  action?: 'none' | 'warning' | 'content_removed' | 'user_suspended' | 'user_banned';
+  action?: 'none' | 'warning' | 'warn' | 'content_removed' | 'user_suspended' | 'suspend' | 'user_banned' | 'ban' | 'dismiss';
   createdAt: Date;
   updatedAt: Date;
 }
@@ -58,7 +58,7 @@ const reportSchema = new Schema<IReport>(
     },
     action: {
       type: String,
-      enum: ['none', 'warning', 'content_removed', 'user_suspended', 'user_banned'],
+      enum: ['none', 'warning', 'warn', 'content_removed', 'user_suspended', 'suspend', 'user_banned', 'ban', 'dismiss'],
     },
   },
   {

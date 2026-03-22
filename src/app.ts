@@ -9,13 +9,29 @@ import messageRoutes from './routes/messageRoutes';
 import migrationRoutes from './routes/migrationRoutes';
 import reviewRoutes from './routes/reviewRoutes';
 import moderationRoutes from './routes/moderationRoutes';
+import adminRoutes from './routes/adminRoutes';
 import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
 
+// Middleware de logging pour toutes les requêtes
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  console.log('Headers:', {
+    authorization: req.headers.authorization ? 'Bearer ***' : 'none',
+    'content-type': req.headers['content-type'],
+  });
+  next();
+});
+
 // Middlewares globaux
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+  origin: ['http://localhost:5173', 'http://localhost:3000'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -28,6 +44,7 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/migration', migrationRoutes); // Route temporaire pour la migration
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/moderation', moderationRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

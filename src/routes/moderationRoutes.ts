@@ -1,22 +1,35 @@
 import express from 'express';
+import {
+  getAdminNotifications,
+  markNotificationAsRead,
+  markAllNotificationsAsRead,
+  checkModerationStatus,
+  reportUser,
+  reportActivity,
+} from '../controllers/moderationController';
 import { authMiddleware } from '../middleware/authMiddleware';
-import { checkModerationStatus } from '../middleware/rateLimitMiddleware';
-import * as moderationController from '../controllers/moderationController';
 
 const router = express.Router();
 
 // Toutes les routes nécessitent l'authentification
 router.use(authMiddleware);
-router.use(checkModerationStatus);
 
-// Signalements
-router.post('/report/user', moderationController.reportUser);
-router.post('/report/activity', moderationController.reportActivity);
+// Récupérer les notifications admin
+router.get('/notifications', getAdminNotifications);
 
-// Blocages
-router.post('/block', moderationController.blockUser);
-router.delete('/block/:userId', moderationController.unblockUser);
-router.get('/blocked', moderationController.getBlockedUsers);
-router.get('/block/:userId/check', moderationController.checkIfBlocked);
+// Marquer une notification comme lue
+router.patch('/notifications/:notificationId/read', markNotificationAsRead);
+
+// Marquer toutes les notifications comme lues
+router.patch('/notifications/read-all', markAllNotificationsAsRead);
+
+// Vérifier le statut de modération
+router.get('/status', checkModerationStatus);
+
+// Signaler un utilisateur
+router.post('/report/user', reportUser);
+
+// Signaler une activité
+router.post('/report/activity', reportActivity);
 
 export default router;

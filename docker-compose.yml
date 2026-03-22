@@ -19,26 +19,14 @@ services:
       - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
       - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
       - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
+      - ADMIN_EMAIL=${ADMIN_EMAIL}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+      - ADMIN_NAME=${ADMIN_NAME}
     volumes:
       - ./src:/app/src
       - /app/node_modules
     depends_on:
-      - mongo
       - redis
-    networks:
-      - lokky-network
-    restart: unless-stopped
-
-  # MongoDB
-  mongo:
-    image: mongo:7
-    container_name: lokky-mongo
-    ports:
-      - "27017:27017"
-    environment:
-      - MONGO_INITDB_DATABASE=lokky
-    volumes:
-      - mongo-data:/data/db
     networks:
       - lokky-network
     restart: unless-stopped
@@ -56,24 +44,7 @@ services:
       - lokky-network
     restart: unless-stopped
 
-  # Mongo Express (Interface web pour MongoDB)
-  mongo-express:
-    image: mongo-express:latest
-    container_name: lokky-mongo-express
-    ports:
-      - "8082:8081"
-    environment:
-      - ME_CONFIG_MONGODB_URL=mongodb+srv://admin_styve:Cordialement_17@cluster0.w2oaucm.mongodb.net/Lokky?retryWrites=true&w=majority&appName=Cluster0
-      - ME_CONFIG_BASICAUTH_USERNAME=admin_styve
-      - ME_CONFIG_BASICAUTH_PASSWORD=Cordialement_17
-    depends_on:
-      - mongo
-    networks:
-      - lokky-network
-    restart: unless-stopped
-
 volumes:
-  mongo-data:
   redis-data:
 
 networks:
