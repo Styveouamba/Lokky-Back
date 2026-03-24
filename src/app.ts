@@ -10,6 +10,7 @@ import migrationRoutes from './routes/migrationRoutes';
 import reviewRoutes from './routes/reviewRoutes';
 import moderationRoutes from './routes/moderationRoutes';
 import adminRoutes from './routes/adminRoutes';
+import achievementRoutes from './routes/achievementRoutes';
 import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -27,7 +28,12 @@ app.use((req, res, next) => {
 // Middlewares globaux
 app.use(helmet());
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:3000'],
+  origin: [
+    'http://localhost:5173', // Admin local
+    'http://localhost:3000', // Landing page local
+    'https://lokky.akylian.com', // Landing page production
+    'https://lokky-back.onrender.com', // Backend production (pour les requêtes internes)
+  ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -45,6 +51,7 @@ app.use('/api/migration', migrationRoutes); // Route temporaire pour la migratio
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/moderation', moderationRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/achievements', achievementRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

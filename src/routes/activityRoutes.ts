@@ -15,6 +15,7 @@ import {
   getUserPastActivities,
   getUserUpcomingActivities,
   updateActivityStatusEndpoint,
+  getPublicActivity,
 } from '../controllers/activityController';
 import { authMiddleware } from '../middleware/authMiddleware';
 import { activityCreationRateLimit, checkModerationStatus } from '../middleware/rateLimitMiddleware';
@@ -35,6 +36,9 @@ const upload = multer({
     }
   },
 });
+
+// Route publique (sans authentification) pour la landing page
+router.get('/:id/public', getPublicActivity);
 
 router.use(authMiddleware);
 router.use(checkModerationStatus);

@@ -9,6 +9,7 @@ import { uploadImage } from '../utils/cloudinary';
 import { getIO } from '../socket/socketHandler';
 import * as rankingService from '../services/rankingService';
 import { rankingCacheService } from '../services/rankingCacheService';
+import { checkActivityCreationAchievements, checkActivityJoinAchievements } from '../services/achievementService';
 
 export const createActivity = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -63,7 +64,13 @@ export const createActivity = async (req: AuthRequest, res: Response): Promise<v
     // Invalider le cache des rankings
     await rankingCacheService.invalidateActivityCache(activity._id.toString());
 
-    res.status(201).json(populatedActivity);
+    // Vérifier et attribuer les achievements
+    const achievements = await checkActivityCreationAchievements(req.userId!);
+    
+    res.status(201).json({
+      ...(populatedActivity?.toObject() || {}),
+      newAchievements: achievements, // Envoyer les nouveaux achievements au frontend
+    });
   } catch (error: any) {
     console.error('Create activity error:', error);
     res.status(500).json({ message: 'Erreur lors de la création de l\'activité' });
@@ -270,7 +277,13 @@ export const joinActivity = async (req: AuthRequest, res: Response): Promise<voi
       .populate('participants', 'name avatar')
       .populate('groupId', 'name avatar');
 
-    res.json(populatedActivity);
+    // Vérifier et attribuer les achievements
+    const achievements = await checkActivityJoinAchievements(req.userId!);
+
+    res.json({
+      ...(populatedActivity?.toObject() || {}),
+      newAchievements: achievements, // Envoyer les nouveaux achievements au frontend
+    });
   } catch (error) {
     console.error('Join activity error:', error);
     res.status(500).json({ message: 'Erreur lors de la participation à l\'activité' });
@@ -620,5 +633,52 @@ export const updateActivityStatusEndpoint = async (req: AuthRequest, res: Respon
   } catch (error) {
     console.error('Update activity status error:', error);
     res.status(500).json({ message: 'Erreur lors de la mise à jour du statut' });
+  }
+};
+
+// Route publique pour récupérer une activité (pour la landing page)
+export const getPublicActivity = async (req: any, res: Response): Promise<void> => {
+  try {
+    const activity = await Activity.findById(req.params.id)
+      .populate('createdBy', 'name avatar')
+      .populate('participants', 'name avatar')
+      .lean();
+
+    if (!activity) {
+      res.status(404).json({ message: 'Activité non trouvée' });
+      return;
+    }
+
+    // Cast pour TypeScript
+    const createdBy = activity.createdBy as any;
+    const participants = activity.participants as any[];
+
+    // Ne retourner que les informations publiques
+    const publicActivity = {
+      _id: activity._id,
+      title: activity.title,
+      description: activity.description,
+      category: activity.category,
+      location: activity.location,
+      date: activity.date,
+      duration: activity.duration,
+      maxParticipants: activity.maxParticipants,
+      imageUrl: activity.imageUrl,
+      createdBy: {
+        _id: createdBy._id,
+        name: createdBy.name,
+        avatar: createdBy.avatar,
+      },
+      participants: participants.map((p: any) => ({
+        _id: p._id,
+        name: p.name,
+        avatar: p.avatar,
+      })),
+    };
+
+    res.json(publicActivity);
+  } catch (error) {
+    console.error('Get public activity error:', error);
+    res.status(500).json({ message: 'Erreur lors de la récupération de l\'activité' });
   }
 };
