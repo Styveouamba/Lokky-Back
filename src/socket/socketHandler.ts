@@ -197,23 +197,19 @@ export const setupSocketHandlers = (ioInstance: Server) => {
 
             // Envoyer la notification seulement si le destinataire n'est PAS dans la conversation
             if (!isRecipientInConversation) {
-              const recipient = await User.findById(recipientId);
+              const sender = await User.findById(socket.userId);
               
-              if (recipient && recipient.pushToken) {
-                const sender = await User.findById(socket.userId);
-                if (sender) {
-                  await sendMessageNotification(
-                    recipient.pushToken,
-                    sender.name,
-                    content.trim(),
-                    conversationId
-                  );
-                }
-              } else {
-                console.log('No push token available for recipient');
+              if (sender) {
+                console.log(`[Socket] Sending push notification to user ${recipientId}`);
+                await sendMessageNotification(
+                  recipientId,
+                  sender.name,
+                  content.trim(),
+                  conversationId
+                );
               }
             } else {
-              console.log('Recipient is in conversation, skipping notification');
+              console.log('[Socket] Recipient is in conversation, skipping notification');
             }
           }
         } else if (group) {
@@ -236,20 +232,18 @@ export const setupSocketHandlers = (ioInstance: Server) => {
               
               // Ne pas envoyer si le membre est actuellement dans la conversation
               if (!connectedUserIds.includes(memberIdString)) {
-                const member = await User.findById(memberId);
+                console.log(`[Socket] Sending group push notification to user ${memberIdString}`);
                 
-                if (member && member.pushToken) {
-                  // Format du message : "[Nom du groupe] Nom: Message"
-                  const notificationTitle = group.name || 'Groupe';
-                  const notificationBody = `${sender.name}: ${content.trim()}`;
-                  
-                  await sendMessageNotification(
-                    member.pushToken,
-                    notificationTitle,
-                    notificationBody,
-                    conversationId
-                  );
-                }
+                // Format du message : "[Nom du groupe] Nom: Message"
+                const notificationTitle = group.name || 'Groupe';
+                const notificationBody = `${sender.name}: ${content.trim()}`;
+                
+                await sendMessageNotification(
+                  memberId,
+                  notificationTitle,
+                  notificationBody,
+                  conversationId
+                );
               }
             }
           }
