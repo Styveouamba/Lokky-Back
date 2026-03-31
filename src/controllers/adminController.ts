@@ -204,12 +204,11 @@ export const suspendUser = async (req: Request, res: Response) => {
     // Émettre l'événement socket
     emitUserSuspended(userId, reason, suspendedUntil);
 
-    // Toujours envoyer la notification (push + in-app)
+    // Toujours envoyer la notification (push + in-app, vérifie automatiquement le token)
     await sendSuspensionNotification(
-      user.pushToken || '', 
+      user._id,
       reason, 
-      `${duration} jours`, 
-      user._id
+      `${duration} jours`
     );
 
     res.json({ message: 'Utilisateur suspendu avec succès', user });
@@ -243,8 +242,8 @@ export const banUser = async (req: Request, res: Response) => {
     // Émettre l'événement socket
     emitUserBanned(userId, reason);
 
-    // Toujours envoyer la notification (push + in-app)
-    await sendBanNotification(user.pushToken || '', reason, user._id);
+    // Toujours envoyer la notification (push + in-app, vérifie automatiquement le token)
+    await sendBanNotification(user._id, reason);
 
     res.json({ message: 'Utilisateur banni avec succès', user });
   } catch (error) {
@@ -276,8 +275,8 @@ export const reactivateUser = async (req: Request, res: Response) => {
     // Émettre l'événement socket
     emitUserReactivated(userId);
 
-    // Toujours envoyer la notification (push + in-app)
-    await sendReactivationNotification(user.pushToken || '', user._id);
+    // Toujours envoyer la notification (push + in-app, vérifie automatiquement le token)
+    await sendReactivationNotification(user._id);
 
     res.json({ message: 'Utilisateur réactivé avec succès', user });
   } catch (error) {
@@ -337,14 +336,11 @@ export const processReport = async (req: Request, res: Response) => {
             };
             await user.save();
 
-            // Envoyer notification d'avertissement
-            if (user.pushToken) {
-              await sendAdminWarningNotification(
-                user.pushToken,
-                reason || report.reason,
-                user._id
-              );
-            }
+            // Envoyer notification d'avertissement (vérifie automatiquement le token)
+            await sendAdminWarningNotification(
+              user._id,
+              reason || report.reason
+            );
           } else if (action === 'suspend' || action === 'user_suspended') {
             const suspendedUntil = new Date();
             suspendedUntil.setDate(suspendedUntil.getDate() + 7); // 7 jours
@@ -357,15 +353,12 @@ export const processReport = async (req: Request, res: Response) => {
             };
             await user.save();
 
-            // Envoyer notification de suspension
-            if (user.pushToken) {
-              await sendSuspensionNotification(
-                user.pushToken,
-                reason || report.reason,
-                '7 jours',
-                user._id
-              );
-            }
+            // Envoyer notification de suspension (vérifie automatiquement le token)
+            await sendSuspensionNotification(
+              user._id,
+              reason || report.reason,
+              '7 jours'
+            );
           } else if (action === 'ban' || action === 'user_banned') {
             user.moderation = {
               status: 'banned',
@@ -376,14 +369,11 @@ export const processReport = async (req: Request, res: Response) => {
             };
             await user.save();
 
-            // Envoyer notification de bannissement
-            if (user.pushToken) {
-              await sendBanNotification(
-                user.pushToken,
-                reason || report.reason,
-                user._id
-              );
-            }
+            // Envoyer notification de bannissement (vérifie automatiquement le token)
+            await sendBanNotification(
+              user._id,
+              reason || report.reason
+            );
           }
         }
       }
@@ -398,29 +388,25 @@ export const processReport = async (req: Request, res: Response) => {
           // Supprimer l'activité
           await Activity.findByIdAndDelete(activity._id);
 
-          // Envoyer notification au créateur
+          // Envoyer notification au créateur (vérifie automatiquement le token)
           if (activity.createdBy) {
-            const creatorPushToken = typeof activity.createdBy === 'object' ? activity.createdBy.pushToken : '';
             const creatorId = typeof activity.createdBy === 'object' ? activity.createdBy._id : activity.createdBy;
             
             await sendCustomAdminNotification(
-              creatorPushToken || '',
+              creatorId,
               '🚫 Activité supprimée',
-              `Votre activité "${activity.title}" a été supprimée pour violation des règles. Raison : ${reason || report.reason}`,
-              creatorId
+              `Votre activité "${activity.title}" a été supprimée pour violation des règles. Raison : ${reason || report.reason}`
             );
           }
         } else if (action === 'warn' || action === 'warning') {
           // Avertir le créateur sans supprimer l'activité
           if (activity.createdBy) {
-            const creatorPushToken = typeof activity.createdBy === 'object' ? activity.createdBy.pushToken : '';
             const creatorId = typeof activity.createdBy === 'object' ? activity.createdBy._id : activity.createdBy;
             
             await sendCustomAdminNotification(
-              creatorPushToken || '',
+              creatorId,
               '⚠️ Avertissement concernant votre activité',
-              `Votre activité "${activity.title}" a été signalée. Raison : ${reason || report.reason}. Veuillez respecter les règles de la communauté.`,
-              creatorId
+              `Votre activité "${activity.title}" a été signalée. Raison : ${reason || report.reason}. Veuillez respecter les règles de la communauté.`
             );
           }
         }
@@ -806,8 +792,8 @@ export const warnUser = async (req: Request, res: Response) => {
     // Émettre l'événement socket
     emitUserWarned(userId, reason, user.moderation.warningCount);
 
-    // Toujours envoyer la notification (push + in-app)
-    await sendAdminWarningNotification(user.pushToken || '', reason, user._id);
+    // Toujours envoyer la notification (push + in-app, vérifie automatiquement le token)
+    await sendAdminWarningNotification(user._id, reason);
 
     res.json({ message: 'Avertissement envoyé avec succès', user });
   } catch (error) {
@@ -831,8 +817,8 @@ export const sendNotificationToUser = async (req: Request, res: Response) => {
       return res.status(404).json({ message: 'Utilisateur non trouvé' });
     }
 
-    // Toujours envoyer la notification (push + in-app)
-    await sendCustomAdminNotification(user.pushToken || '', title, message, user._id);
+    // Toujours envoyer la notification (push + in-app, vérifie automatiquement le token)
+    await sendCustomAdminNotification(user._id, title, message);
     res.json({ message: 'Notification envoyée avec succès' });
   } catch (error) {
     console.error('Send notification error:', error);

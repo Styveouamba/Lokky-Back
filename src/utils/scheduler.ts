@@ -1,5 +1,6 @@
 import { updateAllActivityStatuses, processScheduledNotifications } from '../services/activityLifecycleService';
 import { rankingCacheService } from '../services/rankingCacheService';
+import { sendPendingReminders, cleanupExpiredReminders } from '../services/activityReminderService';
 
 /**
  * Démarre les tâches planifiées
@@ -20,9 +21,21 @@ export function startScheduler(): void {
     runRankingPrecomputation();
   }, 5 * 60 * 1000); // 5 minutes
 
+  // Envoi des rappels d'activités toutes les 5 minutes
+  setInterval(() => {
+    runReminderTasks();
+  }, 5 * 60 * 1000); // 5 minutes
+
+  // Nettoyage des rappels expirés une fois par jour
+  setInterval(() => {
+    runCleanupTasks();
+  }, 24 * 60 * 60 * 1000); // 24 heures
+
   console.log('✓ Scheduler started');
   console.log('  - Activity status update: every 10 minutes');
   console.log('  - Ranking precomputation: every 5 minutes');
+  console.log('  - Activity reminders: every 5 minutes');
+  console.log('  - Cleanup expired reminders: every 24 hours');
 }
 
 /**
@@ -54,5 +67,29 @@ async function runRankingPrecomputation(): Promise<void> {
     console.log(`[${new Date().toISOString()}] Ranking precomputation completed`);
   } catch (error) {
     console.error('Error running ranking precomputation:', error);
+  }
+}
+
+/**
+ * Envoie les rappels d'activités en attente
+ */
+async function runReminderTasks(): Promise<void> {
+  try {
+    await sendPendingReminders();
+  } catch (error) {
+    console.error('Error running reminder tasks:', error);
+  }
+}
+
+/**
+ * Nettoie les rappels expirés
+ */
+async function runCleanupTasks(): Promise<void> {
+  try {
+    console.log(`[${new Date().toISOString()}] Running cleanup tasks...`);
+    await cleanupExpiredReminders();
+    console.log(`[${new Date().toISOString()}] Cleanup tasks completed`);
+  } catch (error) {
+    console.error('Error running cleanup tasks:', error);
   }
 }

@@ -268,10 +268,41 @@ export const updatePushToken = async (req: AuthRequest, res: Response): Promise<
       return;
     }
 
+    // Si pushToken est null, on le supprime du document
+    if (pushToken === null) {
+      const user = await User.findByIdAndUpdate(
+        req.userId,
+        { $unset: { pushToken: "" } },
+        { new: true }
+      ).select('-password');
 
+      if (!user) {
+        res.status(404).json({ message: 'Utilisateur non trouvé' });
+        return;
+      }
+
+      console.log(`Push token removed for user ${req.userId}`);
+
+      res.json({ 
+        message: 'Push token supprimé', 
+        user 
+      });
+      return;
+    }
+
+    // Si on enregistre un nouveau push token, d'abord le retirer de tous les autres utilisateurs
+    // pour éviter qu'un même appareil reçoive des notifications pour plusieurs comptes
+    await User.updateMany(
+      { pushToken, _id: { $ne: req.userId } },
+      { $unset: { pushToken: "" } }
+    );
+
+    console.log(`Removed push token from other users before assigning to user ${req.userId}`);
+
+    // Ensuite, l'assigner à l'utilisateur actuel
     const user = await User.findByIdAndUpdate(
       req.userId,
-      { pushToken: pushToken || undefined },
+      { pushToken },
       { new: true }
     ).select('-password');
 
@@ -280,9 +311,10 @@ export const updatePushToken = async (req: AuthRequest, res: Response): Promise<
       return;
     }
 
+    console.log(`Push token updated for user ${req.userId}`);
 
     res.json({ 
-      message: pushToken ? 'Push token mis à jour' : 'Push token supprimé', 
+      message: 'Push token mis à jour', 
       user 
     });
   } catch (error) {

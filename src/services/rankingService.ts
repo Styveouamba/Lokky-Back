@@ -16,6 +16,7 @@ interface ActivityScore {
     proximity: number;
     popularity: number;
     freshness: number;
+    diversity?: number; // Nouveau: bonus/pénalité de diversité
   };
 }
 
@@ -218,23 +219,25 @@ export function calculateActivityScore(
 
 /**
  * Classe et retourne les activités par score de pertinence
- * Si l'utilisateur n'a pas d'intérêts, ajoute un facteur aléatoire pour varier les résultats
+ * Ajoute un facteur aléatoire léger pour varier les résultats entre les sessions
  */
 export function rankActivities(
   activities: any[],
-  criteria: RankingCriteria
+  criteria: RankingCriteria,
+  options?: { addRandomness?: boolean; randomnessFactor?: number }
 ): RankedActivity[] {
-  const hasNoInterests = !criteria.userInterests || criteria.userInterests.length === 0;
+  const { addRandomness = true, randomnessFactor = 3 } = options || {};
   
   // Calculer le score pour chaque activité
   const activitiesWithScores = activities.map(activity => {
     const score = calculateActivityScore(activity, criteria);
     
-    // Si pas d'intérêts, ajouter un petit facteur aléatoire (0-5 points) pour varier l'ordre
-    if (hasNoInterests) {
-      const randomBonus = Math.random() * 5;
+    // Ajouter un petit facteur aléatoire pour varier l'ordre (0-3 points par défaut)
+    // Cela évite que l'utilisateur voie exactement le même ordre à chaque fois
+    if (addRandomness) {
+      const randomBonus = Math.random() * randomnessFactor;
       score.totalScore += randomBonus;
-      score.breakdown.interests += randomBonus;
+      score.breakdown.diversity = randomBonus;
     }
     
     return {

@@ -10,6 +10,8 @@ import { getIO } from '../socket/socketHandler';
 import * as rankingService from '../services/rankingService';
 import { rankingCacheService } from '../services/rankingCacheService';
 import { checkActivityCreationAchievements, checkActivityJoinAchievements } from '../services/achievementService';
+import diversityService from '../services/diversityService';
+import { createRemindersForActivity, deleteRemindersForActivity, deleteAllRemindersForActivity } from '../services/activityReminderService';
 
 export const createActivity = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -79,7 +81,7 @@ export const createActivity = async (req: AuthRequest, res: Response): Promise<v
 
 export const getActivities = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { category, tags, maxDistance, ranked, limit = '20', cursor } = req.query;
+    const { category, tags, maxDistance, ranked, limit = '20', cursor, trackView = 'true' } = req.query;
     
     // Pagination stricte
     const limitNum = Math.min(parseInt(limit as string, 10), 100); // Max 100 par page
@@ -141,39 +143,55 @@ export const getActivities = async (req: AuthRequest, res: Response): Promise<vo
       }
     }
 
-    // Appliquer le ranking avec cache si demandé
+    // Appliquer le ranking avec diversité si demandé
     if (ranked === 'true' && req.userId) {
-      // Essayer de récupérer depuis le cache
-      const cachedRanking = await rankingCacheService.getRankedActivitiesForUser(req.userId);
-      
-      if (cachedRanking) {
-        console.log('[getActivities] Using cached ranking');
-        res.json({
-          activities: cachedRanking.slice(0, limitNum),
-          hasNextPage: cachedRanking.length > limitNum,
-          nextCursor: null, // Le cache retourne tout, pas de pagination
-        });
-        return;
-      }
-
-      // Sinon calculer et mettre en cache
       const user = await User.findById(req.userId);
       if (user && user.interests && user.goals && user.location?.coordinates) {
-        const rankedActivities = rankingService.rankActivities(
+        // 1. Calculer le ranking de base
+        let rankedActivities = rankingService.rankActivities(
           activities,
           {
             userId: req.userId,
             userInterests: user.interests,
             userGoals: user.goals,
             userLocation: user.location.coordinates,
+          },
+          { addRandomness: true, randomnessFactor: 3 } // Ajouter un facteur aléatoire léger
+        );
+
+        // 2. Récupérer l'historique des vues de l'utilisateur
+        const viewHistory = await diversityService.getUserViewHistory(req.userId, 30);
+
+        // 3. Appliquer les facteurs de diversité
+        rankedActivities = diversityService.applyDiversityBoost(
+          rankedActivities,
+          viewHistory,
+          {
+            userId: req.userId,
+            explorationRate: 0.25, // 25% de chance de boost aléatoire
+            categoryRotation: true,
+            penalizeRecentViews: true,
           }
         );
-        
-        // Mettre en cache pour les prochaines requêtes
-        await rankingCacheService.setCachedScores(req.userId, rankedActivities);
-        
+
+        // 4. Injecter des activités "découverte" (score moyen)
+        rankedActivities = diversityService.injectDiscoveryActivities(rankedActivities, 0.15);
+
+        // 5. Re-trier après application de la diversité
+        rankedActivities.sort((a, b) => {
+          return (b.rankingScore?.totalScore || 0) - (a.rankingScore?.totalScore || 0);
+        });
+
+        // 6. Enregistrer les vues (en arrière-plan, sans bloquer la réponse)
+        if (trackView === 'true' && rankedActivities.length > 0) {
+          const activityIds = rankedActivities.slice(0, 20).map(a => a._id.toString());
+          diversityService.recordBatchViews(req.userId, activityIds).catch(err => {
+            console.error('[getActivities] Error recording views:', err);
+          });
+        }
+
         res.json({
-          activities: rankedActivities,
+          activities: rankedActivities.slice(0, limitNum),
           hasNextPage,
           nextCursor,
         });
@@ -201,6 +219,13 @@ export const getActivityById = async (req: AuthRequest, res: Response): Promise<
     if (!activity) {
       res.status(404).json({ message: 'Activité non trouvée' });
       return;
+    }
+
+    // Enregistrer l'interaction (vue détaillée) si l'utilisateur est authentifié
+    if (req.userId) {
+      diversityService.recordView(req.userId, activity._id.toString(), true).catch(err => {
+        console.error('[getActivityById] Error recording interaction:', err);
+      });
     }
 
     res.json(activity);
@@ -277,6 +302,9 @@ export const joinActivity = async (req: AuthRequest, res: Response): Promise<voi
       .populate('participants', 'name avatar')
       .populate('groupId', 'name avatar');
 
+    // Créer les rappels pour cette activité (24h et 2h avant)
+    await createRemindersForActivity(activity._id, req.userId!);
+
     // Vérifier et attribuer les achievements
     const achievements = await checkActivityJoinAchievements(req.userId!);
 
@@ -346,6 +374,9 @@ export const leaveActivity = async (req: AuthRequest, res: Response): Promise<vo
         await group.save();
       }
     }
+
+    // Supprimer les rappels de cet utilisateur pour cette activité
+    await deleteRemindersForActivity(activity._id, req.userId!);
 
     res.json({ message: 'Vous avez quitté l\'activité' });
   } catch (error) {
@@ -421,6 +452,9 @@ export const deleteActivity = async (req: AuthRequest, res: Response): Promise<v
       res.status(403).json({ message: 'Vous n\'êtes pas autorisé à supprimer cette activité' });
       return;
     }
+
+    // Supprimer tous les rappels de cette activité
+    await deleteAllRemindersForActivity(req.params.id);
 
     await Activity.findByIdAndDelete(req.params.id);
 
@@ -526,21 +560,48 @@ export const getRecommendedActivities = async (req: AuthRequest, res: Response):
       .populate('participants', 'name avatar')
       .lean();
 
-    // Appliquer le ranking
-    const rankedActivities = rankingService.rankActivities(
+    // 1. Appliquer le ranking de base avec randomness
+    let rankedActivities = rankingService.rankActivities(
       activities,
       {
         userId: req.userId,
         userInterests: user.interests,
         userGoals: user.goals,
         userLocation: user.location.coordinates,
+      },
+      { addRandomness: true, randomnessFactor: 5 } // Plus de randomness pour les recommandations
+    );
+
+    // 2. Récupérer l'historique des vues
+    const viewHistory = await diversityService.getUserViewHistory(req.userId, 30);
+
+    // 3. Appliquer les facteurs de diversité
+    rankedActivities = diversityService.applyDiversityBoost(
+      rankedActivities,
+      viewHistory,
+      {
+        userId: req.userId,
+        explorationRate: 0.3, // 30% d'exploration pour les recommandations
+        categoryRotation: true,
+        penalizeRecentViews: true,
       }
     );
 
-    // Filtrer pour ne garder que les recommandations (score > 70)
-    const recommended = rankingService.getRecommendedActivities(rankedActivities);
+    // 4. Re-trier après diversité
+    rankedActivities.sort((a, b) => {
+      return (b.rankingScore?.totalScore || 0) - (a.rankingScore?.totalScore || 0);
+    });
 
-    res.json(recommended);
+    // 5. Filtrer pour ne garder que les bonnes recommandations (score > 60)
+    // Score abaissé de 70 à 60 pour permettre plus de diversité
+    const recommended = rankedActivities.filter(
+      activity => (activity.rankingScore?.totalScore || 0) >= 60
+    );
+
+    // 6. Injecter quelques activités découverte
+    const finalRecommendations = diversityService.injectDiscoveryActivities(recommended, 0.2);
+
+    res.json(finalRecommendations);
   } catch (error) {
     console.error('Get recommended activities error:', error);
     res.status(500).json({ message: 'Erreur lors de la récupération des activités recommandées' });
@@ -571,19 +632,43 @@ export const getTrendingActivities = async (req: AuthRequest, res: Response): Pr
       .populate('participants', 'name avatar')
       .lean();
 
-    // Appliquer le ranking
-    const rankedActivities = rankingService.rankActivities(
+    // 1. Appliquer le ranking avec randomness
+    let rankedActivities = rankingService.rankActivities(
       activities,
       {
         userId: req.userId,
         userInterests: user.interests,
         userGoals: user.goals,
         userLocation: user.location.coordinates,
+      },
+      { addRandomness: true, randomnessFactor: 4 }
+    );
+
+    // 2. Récupérer l'historique des vues
+    const viewHistory = await diversityService.getUserViewHistory(req.userId, 30);
+
+    // 3. Appliquer la diversité avec moins de pénalités pour les tendances
+    rankedActivities = diversityService.applyDiversityBoost(
+      rankedActivities,
+      viewHistory,
+      {
+        userId: req.userId,
+        explorationRate: 0.35, // Plus d'exploration pour les tendances
+        categoryRotation: true,
+        penalizeRecentViews: false, // Pas de pénalité pour les vues récentes dans les tendances
       }
     );
 
-    // Filtrer pour ne garder que les tendances (score > 50)
-    const trending = rankingService.getTrendingActivities(rankedActivities);
+    // 4. Re-trier
+    rankedActivities.sort((a, b) => {
+      return (b.rankingScore?.totalScore || 0) - (a.rankingScore?.totalScore || 0);
+    });
+
+    // 5. Filtrer pour ne garder que les tendances (score > 45)
+    // Score abaissé pour plus de diversité
+    const trending = rankedActivities.filter(
+      activity => (activity.rankingScore?.totalScore || 0) >= 45
+    );
 
     res.json(trending);
   } catch (error) {
@@ -680,5 +765,46 @@ export const getPublicActivity = async (req: any, res: Response): Promise<void> 
   } catch (error) {
     console.error('Get public activity error:', error);
     res.status(500).json({ message: 'Erreur lors de la récupération de l\'activité' });
+  }
+};
+
+// Obtenir les statistiques de diversité de l'utilisateur
+export const getUserDiversityStats = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.userId) {
+      res.status(401).json({ message: 'Non authentifié' });
+      return;
+    }
+
+    const stats = await diversityService.getUserViewStats(req.userId);
+    res.json(stats);
+  } catch (error) {
+    console.error('Get user diversity stats error:', error);
+    res.status(500).json({ message: 'Erreur lors de la récupération des statistiques' });
+  }
+};
+
+// Nettoyer l'historique des vues pour une activité (admin ou créateur)
+export const clearActivityViewHistory = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const activity = await Activity.findById(req.params.id);
+    
+    if (!activity) {
+      res.status(404).json({ message: 'Activité non trouvée' });
+      return;
+    }
+
+    // Vérifier que l'utilisateur est le créateur ou admin
+    const user = await User.findById(req.userId);
+    if (activity.createdBy.toString() !== req.userId && user?.role !== 'admin') {
+      res.status(403).json({ message: 'Non autorisé' });
+      return;
+    }
+
+    await diversityService.clearActivityHistory(req.params.id);
+    res.json({ message: 'Historique des vues nettoyé avec succès' });
+  } catch (error) {
+    console.error('Clear activity view history error:', error);
+    res.status(500).json({ message: 'Erreur lors du nettoyage de l\'historique' });
   }
 };
