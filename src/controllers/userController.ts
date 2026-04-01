@@ -657,17 +657,16 @@ export const getLeaderboard = async (req: AuthRequest, res: Response): Promise<v
       };
     });
 
-    // Détecter les changements de rang et envoyer les notifications
-    const { rankNotificationService } = await import('../services/rankNotificationService');
-    const changes = await rankingCacheService.detectRankChanges(type as string, rankingsData);
+    // DÉSACTIVÉ: Notifications de rang temporairement désactivées
+    // const { rankNotificationService } = await import('../services/rankNotificationService');
+    // const changes = await rankingCacheService.detectRankChanges(type as string, rankingsData);
     
-    if (changes.length > 0) {
-      console.log(`[Leaderboard] Detected ${changes.length} rank changes for ${type}`);
-      // Envoyer les notifications en arrière-plan
-      rankNotificationService.notifyRankChanges(changes).catch(err => {
-        console.error('[Leaderboard] Error sending rank notifications:', err);
-      });
-    }
+    // if (changes.length > 0) {
+    //   console.log(`[Leaderboard] Detected ${changes.length} rank changes for ${type}`);
+    //   rankNotificationService.notifyRankChanges(changes).catch(err => {
+    //     console.error('[Leaderboard] Error sending rank notifications:', err);
+    //   });
+    // }
 
     // Mettre en cache le nouveau leaderboard
     await rankingCacheService.cacheLeaderboard(type as string, rankingsData);

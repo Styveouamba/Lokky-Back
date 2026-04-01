@@ -302,15 +302,14 @@ class RankingCacheService {
         });
 
         // Détecter les changements et envoyer les notifications
-        const changes = await this.detectRankChanges(category, rankingsData);
+        // DÉSACTIVÉ: Notifications de rang temporairement désactivées
+        // const changes = await this.detectRankChanges(category, rankingsData);
         
-        if (changes.length > 0) {
-          console.log(`[RankingCache] Detected ${changes.length} rank changes for ${category}`);
-          
-          // Envoyer les notifications
-          const { rankNotificationService } = await import('./rankNotificationService');
-          await rankNotificationService.notifyRankChanges(changes);
-        }
+        // if (changes.length > 0) {
+        //   console.log(`[RankingCache] Detected ${changes.length} rank changes for ${category}`);
+        //   const { rankNotificationService } = await import('./rankNotificationService');
+        //   await rankNotificationService.notifyRankChanges(changes);
+        // }
 
         // Mettre en cache
         await this.cacheLeaderboard(category, rankingsData);
