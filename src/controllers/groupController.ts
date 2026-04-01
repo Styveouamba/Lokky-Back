@@ -221,3 +221,161 @@ export const leaveGroup = async (req: AuthRequest, res: Response): Promise<void>
   }
 };
 
+export const updateGroupAvatar = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { groupId } = req.params;
+    const { avatar } = req.body;
+
+    console.log('[UpdateGroupAvatar] Request received:', { groupId, avatar, userId: req.userId });
+
+    if (!mongoose.Types.ObjectId.isValid(groupId)) {
+      console.error('[UpdateGroupAvatar] Invalid group ID:', groupId);
+      res.status(400).json({ message: 'ID de groupe invalide' });
+      return;
+    }
+
+    const group = await Group.findById(groupId);
+    if (!group) {
+      console.error('[UpdateGroupAvatar] Group not found:', groupId);
+      res.status(404).json({ message: 'Groupe non trouvé' });
+      return;
+    }
+
+    // Vérifier que l'utilisateur est admin du groupe
+    if (!group.admins.includes(req.userId as any)) {
+      console.error('[UpdateGroupAvatar] User not admin:', { userId: req.userId, admins: group.admins });
+      res.status(403).json({ message: 'Seuls les admins peuvent modifier l\'image du groupe' });
+      return;
+    }
+
+    console.log('[UpdateGroupAvatar] Updating avatar from', group.avatar, 'to', avatar);
+
+    // Mettre à jour l'avatar
+    group.avatar = avatar;
+    await group.save();
+
+    console.log('[UpdateGroupAvatar] Avatar updated successfully');
+
+    // Populate le groupe pour le retour
+    const populatedGroup = await Group.findById(group._id)
+      .populate('createdBy', 'name avatar')
+      .populate('members', 'name avatar')
+      .populate('admins', 'name avatar');
+
+    // Émettre l'événement de mise à jour via Socket.IO
+    try {
+      const { getIO } = await import('../socket/socketHandler');
+      const io = getIO();
+      console.log('[UpdateGroupAvatar] Emitting group_updated to room:', group._id.toString());
+      io.to(group._id.toString()).emit('group_updated', populatedGroup);
+    } catch (socketError) {
+      console.error('[UpdateGroupAvatar] Socket error (non-blocking):', socketError);
+      // Ne pas bloquer la réponse si socket échoue
+    }
+
+    console.log('[UpdateGroupAvatar] Sending response');
+    res.json(populatedGroup);
+  } catch (error) {
+    console.error('[UpdateGroupAvatar] Error:', error);
+    res.status(500).json({ message: 'Erreur lors de la mise à jour de l\'image' });
+  }
+};
+
+export const removeMember = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { groupId, memberId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(groupId) || !mongoose.Types.ObjectId.isValid(memberId)) {
+      res.status(400).json({ message: 'ID invalide' });
+      return;
+    }
+
+    const group = await Group.findById(groupId);
+    if (!group) {
+      res.status(404).json({ message: 'Groupe non trouvé' });
+      return;
+    }
+
+    // Vérifier que l'utilisateur est admin du groupe
+    if (!group.admins.includes(req.userId as any)) {
+      res.status(403).json({ message: 'Seuls les admins peuvent retirer des membres' });
+      return;
+    }
+
+    // Vérifier que le membre à retirer n'est pas le créateur
+    if (group.createdBy.toString() === memberId) {
+      res.status(400).json({ message: 'Le créateur ne peut pas être retiré du groupe' });
+      return;
+    }
+
+    // Vérifier que le membre est dans le groupe
+    if (!group.members.includes(memberId as any)) {
+      res.status(400).json({ message: 'Cet utilisateur n\'est pas membre du groupe' });
+      return;
+    }
+
+    // Récupérer les infos des utilisateurs pour le message système
+    const User = (await import('../models/userModel')).default;
+    const admin = await User.findById(req.userId).select('name avatar');
+    const removedUser = await User.findById(memberId).select('name avatar');
+
+    // Vérifier si ce groupe est lié à une activité
+    const Activity = (await import('../models/activityModel')).default;
+    const activity = await Activity.findOne({ groupId: group._id });
+
+    // Si le groupe est lié à une activité, retirer l'utilisateur de l'activité aussi
+    if (activity) {
+      activity.participants = activity.participants.filter(
+        p => p.toString() !== memberId
+      );
+      await activity.save();
+    }
+
+    // Retirer le membre du groupe
+    group.members = group.members.filter(id => id.toString() !== memberId);
+    
+    // Si c'était un admin, le retirer aussi des admins
+    if (group.admins.includes(memberId as any)) {
+      group.admins = group.admins.filter(id => id.toString() !== memberId);
+    }
+
+    await group.save();
+
+    // Créer un message système
+    const systemMessage = await Message.create({
+      group: group._id,
+      sender: req.userId,
+      content: `${admin?.name} a retiré ${removedUser?.name} du groupe`,
+      isSystemMessage: true,
+      systemMessageType: 'user_left',
+      read: false,
+    });
+
+    const populatedMessage = await Message.findById(systemMessage._id)
+      .populate('sender', 'name avatar');
+
+    console.log('[RemoveMember] System message created:', populatedMessage);
+
+    // Mettre à jour le lastMessage du groupe
+    group.lastMessage = systemMessage.content;
+    group.lastMessageAt = systemMessage.createdAt;
+    group.lastMessageSender = admin?.name;
+    await group.save();
+
+    // Émettre le message via Socket.IO
+    const { getIO } = await import('../socket/socketHandler');
+    const io = getIO();
+    
+    console.log('[RemoveMember] Emitting to room:', group._id.toString());
+    io.to(group._id.toString()).emit('new_message', populatedMessage);
+    io.to(group._id.toString()).emit('group_updated', group);
+
+    // Notifier le membre retiré qu'il a été exclu
+    io.to(memberId).emit('removed_from_group', { groupId: group._id });
+
+    res.json({ message: 'Membre retiré avec succès' });
+  } catch (error) {
+    console.error('Remove member error:', error);
+    res.status(500).json({ message: 'Erreur lors du retrait du membre' });
+  }
+};

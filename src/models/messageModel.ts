@@ -69,6 +69,10 @@ const messageSchema = new Schema<IMessage>(
 messageSchema.index({ conversation: 1, createdAt: -1 });
 messageSchema.index({ group: 1, createdAt: -1 });
 
+// Index composés pour optimiser les requêtes avec deletedFor
+messageSchema.index({ conversation: 1, deletedFor: 1, createdAt: -1 });
+messageSchema.index({ group: 1, deletedFor: 1, createdAt: -1 });
+
 const Message = mongoose.model<IMessage>('Message', messageSchema);
 
 export default Message;

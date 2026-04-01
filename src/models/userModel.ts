@@ -22,6 +22,14 @@ export interface IUser extends Document {
     activitiesCompleted: number; // Nombre d'activités complétées
     attendanceRate: number; // Taux de présence (%)
     totalNoShows: number; // Nombre de fois absent
+    // Gamification participants (optionnels pour compatibilité)
+    participationStreak?: number; // Série d'activités consécutives
+    longestStreak?: number; // Plus longue série
+    categoriesExplored?: string[]; // Catégories essayées
+    socialScore?: number; // Score social global
+    badges?: string[]; // Badges débloqués
+    level?: 'bronze' | 'silver' | 'gold' | 'platinum' | 'diamond'; // Niveau
+    lastActivityDate?: Date; // Date de la dernière activité (pour série)
   };
   moderation?: {
     status: 'active' | 'warned' | 'suspended' | 'banned';
@@ -127,6 +135,35 @@ const userSchema = new Schema<IUser>(
       totalNoShows: {
         type: Number,
         default: 0,
+      },
+      // Gamification participants
+      participationStreak: {
+        type: Number,
+        default: 0,
+      },
+      longestStreak: {
+        type: Number,
+        default: 0,
+      },
+      categoriesExplored: {
+        type: [String],
+        default: [],
+      },
+      socialScore: {
+        type: Number,
+        default: 0,
+      },
+      badges: {
+        type: [String],
+        default: [],
+      },
+      level: {
+        type: String,
+        enum: ['bronze', 'silver', 'gold', 'platinum', 'diamond'],
+        default: 'bronze',
+      },
+      lastActivityDate: {
+        type: Date,
       },
     },
     moderation: {

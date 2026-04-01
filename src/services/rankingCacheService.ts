@@ -1,175 +1,297 @@
-import { cacheService } from './cacheService';
-import { calculateActivityScore, rankActivities } from './rankingService';
-import Activity from '../models/activityModel';
-import User from '../models/userModel';
+import Redis from 'ioredis';
 
-interface CachedRanking {
-  activityId: string;
-  scores: Map<string, number>; // userId -> score
-  lastUpdated: Date;
+// Configuration Redis
+const redisUrl = process.env.REDIS_URL || 'redis://localhost:6379';
+const redis = new Redis(redisUrl, {
+  retryStrategy: (times) => {
+    const delay = Math.min(times * 50, 2000);
+    return delay;
+  },
+  maxRetriesPerRequest: 3,
+});
+
+redis.on('error', (err) => {
+  console.error('Redis connection error:', err);
+});
+
+redis.on('connect', () => {
+  console.log('✅ Redis connected successfully');
+});
+
+interface RankingData {
+  userId: string;
+  rank: number;
+  score: number;
+  category: 'creators' | 'ratings' | 'active';
 }
 
-/**
- * Service pour gérer le cache des scores de ranking
- */
+interface RankChange {
+  userId: string;
+  category: string;
+  oldRank: number | null;
+  newRank: number;
+  change: number;
+  enteredTop10: boolean;
+  becameFirst: boolean;
+}
+
 class RankingCacheService {
   private readonly CACHE_TTL = 300; // 5 minutes
-  private readonly BATCH_SIZE = 100;
+  private readonly RANK_HISTORY_TTL = 86400; // 24 heures
 
   /**
-   * Génère une clé de cache pour un utilisateur
+   * Sauvegarder le leaderboard en cache
    */
-  private getUserCacheKey(userId: string): string {
-    return `ranking:user:${userId}`;
-  }
-
-  /**
-   * Génère une clé de cache pour une activité
-   */
-  private getActivityCacheKey(activityId: string): string {
-    return `ranking:activity:${activityId}`;
-  }
-
-  /**
-   * Récupère les scores en cache pour un utilisateur
-   */
-  async getCachedScores(userId: string): Promise<any[] | null> {
-    const key = this.getUserCacheKey(userId);
-    return await cacheService.get(key);
-  }
-
-  /**
-   * Stocke les scores en cache pour un utilisateur
-   */
-  async setCachedScores(userId: string, rankedActivities: any[]): Promise<void> {
-    const key = this.getUserCacheKey(userId);
-    await cacheService.set(key, rankedActivities, this.CACHE_TTL);
-  }
-
-  /**
-   * Invalide le cache d'un utilisateur
-   */
-  async invalidateUserCache(userId: string): Promise<void> {
-    const key = this.getUserCacheKey(userId);
-    await cacheService.delete(key);
-  }
-
-  /**
-   * Invalide le cache de tous les utilisateurs
-   */
-  async invalidateAllUserCaches(): Promise<void> {
-    await cacheService.deletePattern('ranking:user:*');
-  }
-
-  /**
-   * Invalide le cache lié à une activité
-   */
-  async invalidateActivityCache(activityId: string): Promise<void> {
-    // Invalider tous les caches utilisateurs car une activité a changé
-    await this.invalidateAllUserCaches();
-  }
-
-  /**
-   * Pré-calcule les rankings pour les utilisateurs actifs
-   * À exécuter en background toutes les 5-10 minutes
-   */
-  async precomputeRankings(): Promise<void> {
+  async cacheLeaderboard(category: string, rankings: RankingData[]): Promise<void> {
     try {
-      console.log('[RankingCache] Starting precomputation...');
-      
-      // Récupérer toutes les activités actives
-      const activities = await Activity.find({
-        status: { $in: ['upcoming', 'ongoing'] },
-      })
-        .populate('createdBy', 'name avatar')
-        .populate('participants', 'name avatar')
-        .lean();
-
-      if (activities.length === 0) {
-        console.log('[RankingCache] No activities to rank');
-        return;
-      }
-
-      // Récupérer les utilisateurs actifs (connectés dans les dernières 24h)
-      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const activeUsers = await User.find({
-        lastActive: { $gte: oneDayAgo },
-        'location.coordinates': { $exists: true },
-      })
-        .select('_id interests goals location')
-        .lean();
-
-      console.log(`[RankingCache] Processing ${activeUsers.length} active users`);
-
-      // Traiter par batch pour éviter la surcharge mémoire
-      for (let i = 0; i < activeUsers.length; i += this.BATCH_SIZE) {
-        const batch = activeUsers.slice(i, i + this.BATCH_SIZE);
-        
-        await Promise.all(
-          batch.map(async (user) => {
-            if (!user.location?.coordinates) return;
-
-            const rankedActivities = rankActivities(activities, {
-              userId: user._id.toString(),
-              userInterests: user.interests || [],
-              userGoals: user.goals || [],
-              userLocation: user.location.coordinates,
-            });
-
-            await this.setCachedScores(user._id.toString(), rankedActivities);
-          })
-        );
-
-        console.log(`[RankingCache] Processed batch ${i / this.BATCH_SIZE + 1}`);
-      }
-
-      console.log('[RankingCache] Precomputation completed');
+      const key = `leaderboard:${category}`;
+      await redis.setex(key, this.CACHE_TTL, JSON.stringify(rankings));
+      console.log(`[RankingCache] Cached ${category} leaderboard with ${rankings.length} entries`);
     } catch (error) {
-      console.error('[RankingCache] Precomputation error:', error);
+      console.error('[RankingCache] Error caching leaderboard:', error);
     }
   }
 
   /**
-   * Calcule le ranking pour un utilisateur spécifique avec cache
+   * Récupérer le leaderboard depuis le cache
    */
-  async getRankedActivitiesForUser(userId: string): Promise<any[] | null> {
-    // Vérifier le cache d'abord
-    const cached = await this.getCachedScores(userId);
-    if (cached) {
-      console.log(`[RankingCache] Cache hit for user ${userId}`);
-      return cached;
+  async getLeaderboard(category: string): Promise<RankingData[] | null> {
+    try {
+      const key = `leaderboard:${category}`;
+      const cached = await redis.get(key);
+      
+      if (cached) {
+        console.log(`[RankingCache] Cache hit for ${category}`);
+        return JSON.parse(cached);
+      }
+      
+      console.log(`[RankingCache] Cache miss for ${category}`);
+      return null;
+    } catch (error) {
+      console.error('[RankingCache] Error getting leaderboard (Redis might not be running):', error);
+      return null; // Retourner null en cas d'erreur pour continuer sans cache
     }
+  }
 
-    console.log(`[RankingCache] Cache miss for user ${userId}, computing...`);
+  /**
+   * Sauvegarder le rang actuel d'un utilisateur
+   */
+  async saveUserRank(userId: string, category: string, rank: number, score: number): Promise<void> {
+    try {
+      const key = `user:${userId}:rank:${category}`;
+      const data = { rank, score, timestamp: Date.now() };
+      await redis.setex(key, this.RANK_HISTORY_TTL, JSON.stringify(data));
+    } catch (error) {
+      console.error('[RankingCache] Error saving user rank:', error);
+    }
+  }
 
-    // Calculer si pas en cache
-    const user = await User.findById(userId)
-      .select('interests goals location')
-      .lean();
-
-    if (!user || !user.location?.coordinates) {
+  /**
+   * Récupérer le rang précédent d'un utilisateur
+   */
+  async getPreviousRank(userId: string, category: string): Promise<{ rank: number; score: number } | null> {
+    try {
+      const key = `user:${userId}:rank:${category}`;
+      const cached = await redis.get(key);
+      
+      if (cached) {
+        const data = JSON.parse(cached);
+        return { rank: data.rank, score: data.score };
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('[RankingCache] Error getting previous rank:', error);
       return null;
     }
+  }
 
-    const activities = await Activity.find({
-      status: { $in: ['upcoming', 'ongoing'] },
-    })
-      .populate('createdBy', 'name avatar')
-      .populate('participants', 'name avatar')
-      .lean();
+  /**
+   * Détecter les changements de rang et retourner les notifications à envoyer
+   */
+  async detectRankChanges(
+    category: string,
+    newRankings: RankingData[]
+  ): Promise<RankChange[]> {
+    const changes: RankChange[] = [];
 
-    const rankedActivities = rankActivities(activities, {
-      userId,
-      userInterests: user.interests || [],
-      userGoals: user.goals || [],
-      userLocation: user.location.coordinates,
-    });
+    for (const ranking of newRankings) {
+      const previous = await this.getPreviousRank(ranking.userId, category);
+      
+      if (!previous) {
+        // Première fois dans le classement
+        if (ranking.rank <= 10) {
+          changes.push({
+            userId: ranking.userId,
+            category,
+            oldRank: null,
+            newRank: ranking.rank,
+            change: 0,
+            enteredTop10: true,
+            becameFirst: ranking.rank === 1,
+          });
+        }
+      } else {
+        const rankChange = previous.rank - ranking.rank; // Positif = amélioration
+        
+        // Détecter les changements significatifs
+        const enteredTop10 = previous.rank > 10 && ranking.rank <= 10;
+        const becameFirst = previous.rank > 1 && ranking.rank === 1;
+        const significantChange = Math.abs(rankChange) >= 5;
+        
+        if (enteredTop10 || becameFirst || significantChange) {
+          changes.push({
+            userId: ranking.userId,
+            category,
+            oldRank: previous.rank,
+            newRank: ranking.rank,
+            change: rankChange,
+            enteredTop10,
+            becameFirst,
+          });
+        }
+      }
 
-    // Mettre en cache
-    await this.setCachedScores(userId, rankedActivities);
+      // Sauvegarder le nouveau rang
+      await this.saveUserRank(ranking.userId, category, ranking.rank, ranking.score);
+    }
 
-    return rankedActivities;
+    return changes;
+  }
+
+  /**
+   * Invalider le cache d'une activité spécifique
+   */
+  async invalidateActivityCache(activityId: string): Promise<void> {
+    try {
+      // Invalider tous les leaderboards car une activité peut affecter plusieurs classements
+      await redis.del('leaderboard:creators', 'leaderboard:ratings', 'leaderboard:active');
+      console.log(`[RankingCache] Invalidated cache for activity ${activityId}`);
+    } catch (error) {
+      console.error('[RankingCache] Error invalidating cache:', error);
+    }
+  }
+
+  /**
+   * Invalider tout le cache
+   */
+  async invalidateAll(): Promise<void> {
+    try {
+      const keys = await redis.keys('leaderboard:*');
+      if (keys.length > 0) {
+        await redis.del(...keys);
+        console.log(`[RankingCache] Invalidated ${keys.length} cache entries`);
+      }
+    } catch (error) {
+      console.error('[RankingCache] Error invalidating all cache:', error);
+    }
+  }
+
+  /**
+   * Pré-calculer les rankings pour toutes les catégories
+   * et détecter les changements de rang
+   */
+  async precomputeRankings(): Promise<void> {
+    const categories = ['creators', 'ratings', 'active'];
+    
+    for (const category of categories) {
+      try {
+        console.log(`[RankingCache] Precomputing ${category} rankings...`);
+        
+        // Importer les modèles nécessaires
+        const User = (await import('../models/userModel')).default;
+        
+        let sortCriteria: any = {};
+        let minCriteria: any = {};
+
+        switch (category) {
+          case 'creators':
+            sortCriteria = { 'reputation.activitiesCreated': -1 };
+            minCriteria = { 'reputation.activitiesCreated': { $gt: 0 } };
+            break;
+          case 'ratings':
+            sortCriteria = { 'reputation.averageRating': -1, 'reputation.totalReviews': -1 };
+            minCriteria = { 'reputation.totalReviews': { $gte: 3 } };
+            break;
+          case 'active':
+            sortCriteria = { 'reputation.activitiesCompleted': -1 };
+            minCriteria = { 'reputation.activitiesCompleted': { $gt: 0 } };
+            break;
+        }
+
+        // Récupérer le top 50
+        const users = await User.find({
+          ...minCriteria,
+          'moderation.status': { $ne: 'banned' },
+        })
+          .select('_id reputation')
+          .sort(sortCriteria)
+          .limit(50)
+          .lean();
+
+        // Préparer les données de ranking
+        const rankingsData = users.map((user, index) => {
+          let score = 0;
+          switch (category) {
+            case 'creators':
+              score = user.reputation?.activitiesCreated || 0;
+              break;
+            case 'ratings':
+              score = user.reputation?.averageRating || 0;
+              break;
+            case 'active':
+              score = user.reputation?.activitiesCompleted || 0;
+              break;
+          }
+
+          return {
+            userId: user._id.toString(),
+            rank: index + 1,
+            score,
+            category: category as 'creators' | 'ratings' | 'active',
+          };
+        });
+
+        // Détecter les changements et envoyer les notifications
+        const changes = await this.detectRankChanges(category, rankingsData);
+        
+        if (changes.length > 0) {
+          console.log(`[RankingCache] Detected ${changes.length} rank changes for ${category}`);
+          
+          // Envoyer les notifications
+          const { rankNotificationService } = await import('./rankNotificationService');
+          await rankNotificationService.notifyRankChanges(changes);
+        }
+
+        // Mettre en cache
+        await this.cacheLeaderboard(category, rankingsData);
+        
+        console.log(`[RankingCache] Precomputed ${category} with ${rankingsData.length} users`);
+      } catch (error) {
+        console.error(`[RankingCache] Error precomputing ${category}:`, error);
+      }
+    }
+  }
+  async getCacheStats(): Promise<{ hits: number; misses: number; keys: number }> {
+    try {
+      const info = await redis.info('stats');
+      const keys = await redis.keys('leaderboard:*');
+      
+      // Parser les stats Redis
+      const hitsMatch = info.match(/keyspace_hits:(\d+)/);
+      const missesMatch = info.match(/keyspace_misses:(\d+)/);
+      
+      return {
+        hits: hitsMatch ? parseInt(hitsMatch[1]) : 0,
+        misses: missesMatch ? parseInt(missesMatch[1]) : 0,
+        keys: keys.length,
+      };
+    } catch (error) {
+      console.error('[RankingCache] Error getting cache stats:', error);
+      return { hits: 0, misses: 0, keys: 0 };
+    }
   }
 }
 
 export const rankingCacheService = new RankingCacheService();
+export { RankChange };

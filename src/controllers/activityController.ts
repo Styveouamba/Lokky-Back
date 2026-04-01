@@ -59,9 +59,15 @@ export const createActivity = async (req: AuthRequest, res: Response): Promise<v
     });
 
     const populatedActivity = await Activity.findById(activity._id)
-      .populate('createdBy', 'name avatar')
+      .populate('createdBy', 'name avatar reputation')
       .populate('participants', 'name avatar')
       .populate('groupId', 'name avatar');
+
+    // Mettre à jour le compteur d'activités créées
+    await User.findByIdAndUpdate(
+      req.userId,
+      { $inc: { 'reputation.activitiesCreated': 1 } }
+    );
 
     // Invalider le cache des rankings
     await rankingCacheService.invalidateActivityCache(activity._id.toString());
@@ -109,7 +115,7 @@ export const getActivities = async (req: AuthRequest, res: Response): Promise<vo
     }
 
     let activities = await Activity.find(query)
-      .populate('createdBy', 'name avatar')
+      .populate('createdBy', 'name avatar reputation')
       .populate('participants', 'name avatar')
       .sort({ _id: 1 }) // Tri par _id pour pagination avec curseur
       .limit(limitNum + 1) // +1 pour savoir s'il y a une page suivante
@@ -213,7 +219,7 @@ export const getActivities = async (req: AuthRequest, res: Response): Promise<vo
 export const getActivityById = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const activity = await Activity.findById(req.params.id)
-      .populate('createdBy', 'name avatar interests goals')
+      .populate('createdBy', 'name avatar interests goals reputation')
       .populate('participants', 'name avatar interests');
 
     if (!activity) {
@@ -468,7 +474,7 @@ export const deleteActivity = async (req: AuthRequest, res: Response): Promise<v
 export const getMyActivities = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const activities = await Activity.find({ createdBy: req.userId })
-      .populate('createdBy', 'name avatar')
+      .populate('createdBy', 'name avatar reputation')
       .populate('participants', 'name avatar')
       .sort({ date: 1 });
 
@@ -556,7 +562,7 @@ export const getRecommendedActivities = async (req: AuthRequest, res: Response):
       status: { $in: ['upcoming', 'ongoing'] },
       date: { $gte: new Date() }
     })
-      .populate('createdBy', 'name avatar')
+      .populate('createdBy', 'name avatar reputation')
       .populate('participants', 'name avatar')
       .lean();
 
@@ -628,7 +634,7 @@ export const getTrendingActivities = async (req: AuthRequest, res: Response): Pr
       status: { $in: ['upcoming', 'ongoing'] },
       date: { $gte: new Date() }
     })
-      .populate('createdBy', 'name avatar')
+      .populate('createdBy', 'name avatar reputation')
       .populate('participants', 'name avatar')
       .lean();
 

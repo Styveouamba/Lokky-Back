@@ -12,6 +12,8 @@ import {
   blockUser,
   unblockUser,
   getBlockedUsers,
+  getLeaderboard,
+  getUserPublicProfile,
 } from '../controllers/userController';
 import { authMiddleware } from '../middleware/authMiddleware';
 
@@ -45,5 +47,11 @@ router.post('/test-notification', authMiddleware, testPushNotification);
 router.get('/blocked', authMiddleware, getBlockedUsers);
 router.post('/block/:userId', authMiddleware, blockUser);
 router.delete('/unblock/:userId', authMiddleware, unblockUser);
+
+// Route leaderboard
+router.get('/leaderboard', authMiddleware, getLeaderboard);
+
+// Route profil public
+router.get('/public-profile/:userId', authMiddleware, getUserPublicProfile);
 
 export default router;

@@ -101,7 +101,46 @@ export const getProfile = async (req: AuthRequest, res: Response): Promise<void>
       return;
     }
 
-    res.json({ user });
+    // S'assurer que reputation existe avec des valeurs par défaut
+    const userObj = user.toObject();
+    if (!userObj.reputation) {
+      userObj.reputation = {
+        averageRating: 0,
+        totalReviews: 0,
+        activitiesCreated: 0,
+        activitiesCompleted: 0,
+        attendanceRate: 100,
+        totalNoShows: 0,
+        participationStreak: 0,
+        longestStreak: 0,
+        categoriesExplored: [],
+        socialScore: 0,
+        badges: [],
+        level: 'bronze' as const,
+      };
+    } else {
+      // S'assurer que les nouveaux champs existent
+      if (userObj.reputation.participationStreak === undefined) {
+        userObj.reputation.participationStreak = 0;
+      }
+      if (userObj.reputation.longestStreak === undefined) {
+        userObj.reputation.longestStreak = 0;
+      }
+      if (userObj.reputation.categoriesExplored === undefined) {
+        userObj.reputation.categoriesExplored = [];
+      }
+      if (userObj.reputation.socialScore === undefined) {
+        userObj.reputation.socialScore = 0;
+      }
+      if (userObj.reputation.badges === undefined) {
+        userObj.reputation.badges = [];
+      }
+      if (userObj.reputation.level === undefined) {
+        userObj.reputation.level = 'bronze';
+      }
+    }
+
+    res.json({ user: userObj });
   } catch (error) {
     res.status(500).json({ message: 'Erreur lors de la récupération du profil' });
   }
@@ -479,5 +518,257 @@ export const getBlockedUsers = async (req: AuthRequest, res: Response): Promise<
   } catch (error) {
     console.error('Get blocked users error:', error);
     res.status(500).json({ message: 'Erreur lors de la récupération des utilisateurs bloqués' });
+  }
+};
+
+
+/**
+ * Get leaderboard
+ */
+export const getLeaderboard = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { type = 'creators' } = req.query;
+    const userId = req.userId;
+    const limit = 50; // Top 50
+
+    console.log(`[Leaderboard] Fetching ${type} leaderboard for user ${userId}`);
+
+    // Essayer de récupérer depuis le cache Redis
+    const { rankingCacheService } = await import('../services/rankingCacheService');
+    const cached = await rankingCacheService.getLeaderboard(type as string);
+    
+    if (cached && cached.length > 0) {
+      console.log(`[Leaderboard] Cache hit with ${cached.length} entries`);
+      
+      // Récupérer les détails des utilisateurs depuis la base de données
+      const userIds = cached.map(r => r.userId);
+      const users = await User.find({ _id: { $in: userIds } })
+        .select('name avatar reputation')
+        .lean();
+      
+      console.log(`[Leaderboard] Found ${users.length} users in DB for ${userIds.length} cached IDs`);
+      
+      // Créer un map pour un accès rapide
+      const userMap = new Map(users.map(u => [u._id.toString(), u]));
+      
+      // Combiner les données du cache avec les détails des utilisateurs
+      const leaderboard = cached
+        .map(r => {
+          const user = userMap.get(r.userId);
+          if (!user) {
+            console.log(`[Leaderboard] User ${r.userId} not found in DB`);
+            return null;
+          }
+          
+          return {
+            _id: r.userId,
+            name: user.name,
+            avatar: user.avatar,
+            reputation: user.reputation,
+            rank: r.rank,
+          };
+        })
+        .filter(u => u !== null); // Filtrer les utilisateurs non trouvés
+      
+      console.log(`[Leaderboard] Returning ${leaderboard.length} valid users from cache`);
+      
+      // Si le cache ne retourne aucun utilisateur valide, invalider et refaire la requête
+      if (leaderboard.length === 0) {
+        console.log('[Leaderboard] Cache returned no valid users, invalidating and fetching fresh data...');
+        await rankingCacheService.invalidateAll();
+        // Ne pas retourner, continuer avec la requête normale
+      } else {
+        // Trouver le rang de l'utilisateur dans le cache
+        let myRank = null;
+        if (userId) {
+          const userIndex = leaderboard.findIndex(u => u && u._id === userId);
+          myRank = userIndex !== -1 ? userIndex + 1 : null;
+        }
+
+        res.json({
+          leaderboard,
+          myRank,
+          type,
+          cached: true,
+        });
+        return;
+      }
+    } else {
+      console.log('[Leaderboard] Cache miss, fetching from DB');
+    }
+
+    let sortCriteria: any = {};
+    let minCriteria: any = {};
+
+    switch (type) {
+      case 'creators':
+        // Classement par nombre d'activités créées
+        sortCriteria = { 'reputation.activitiesCreated': -1 };
+        minCriteria = { 'reputation.activitiesCreated': { $gt: 0 } };
+        break;
+      
+      case 'ratings':
+        // Classement par note moyenne (minimum 3 avis pour être classé)
+        sortCriteria = { 'reputation.averageRating': -1, 'reputation.totalReviews': -1 };
+        minCriteria = { 'reputation.totalReviews': { $gte: 3 } };
+        break;
+      
+      case 'active':
+        // Classement par nombre d'activités complétées
+        sortCriteria = { 'reputation.activitiesCompleted': -1 };
+        minCriteria = { 'reputation.activitiesCompleted': { $gt: 0 } };
+        break;
+      
+      default:
+        sortCriteria = { 'reputation.activitiesCreated': -1 };
+        minCriteria = { 'reputation.activitiesCreated': { $gt: 0 } };
+    }
+
+    // Récupérer le top du leaderboard
+    const leaderboard = await User.find({
+      ...minCriteria,
+      'moderation.status': { $ne: 'banned' },
+    })
+      .select('name avatar reputation')
+      .sort(sortCriteria)
+      .limit(limit)
+      .lean();
+
+    // Préparer les données pour le cache et la détection de changements
+    const rankingsData = leaderboard.map((user, index) => {
+      let score = 0;
+      switch (type) {
+        case 'creators':
+          score = user.reputation?.activitiesCreated || 0;
+          break;
+        case 'ratings':
+          score = user.reputation?.averageRating || 0;
+          break;
+        case 'active':
+          score = user.reputation?.activitiesCompleted || 0;
+          break;
+      }
+
+      return {
+        userId: user._id.toString(),
+        rank: index + 1,
+        score,
+        category: type as 'creators' | 'ratings' | 'active',
+      };
+    });
+
+    // Détecter les changements de rang et envoyer les notifications
+    const { rankNotificationService } = await import('../services/rankNotificationService');
+    const changes = await rankingCacheService.detectRankChanges(type as string, rankingsData);
+    
+    if (changes.length > 0) {
+      console.log(`[Leaderboard] Detected ${changes.length} rank changes for ${type}`);
+      // Envoyer les notifications en arrière-plan
+      rankNotificationService.notifyRankChanges(changes).catch(err => {
+        console.error('[Leaderboard] Error sending rank notifications:', err);
+      });
+    }
+
+    // Mettre en cache le nouveau leaderboard
+    await rankingCacheService.cacheLeaderboard(type as string, rankingsData);
+
+    console.log(`[Leaderboard] Returning ${leaderboard.length} users from DB (fresh data)`);
+
+    // Trouver le rang de l'utilisateur actuel
+    let myRank = null;
+    if (userId) {
+      const userIndex = rankingsData.findIndex(r => r.userId === userId);
+      if (userIndex !== -1) {
+        myRank = userIndex + 1;
+      } else {
+        // L'utilisateur n'est pas dans le top, chercher son rang exact
+        const allUsers = await User.find({
+          ...minCriteria,
+          'moderation.status': { $ne: 'banned' },
+        })
+          .select('_id')
+          .sort(sortCriteria)
+          .lean();
+
+        const allUserIndex = allUsers.findIndex(u => u._id.toString() === userId);
+        if (allUserIndex !== -1) {
+          myRank = allUserIndex + 1;
+        }
+      }
+    }
+
+    res.json({
+      leaderboard,
+      myRank,
+      type,
+      cached: false,
+    });
+  } catch (error) {
+    console.error('Error fetching leaderboard:', error);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+};
+
+/**
+ * Get public profile of a user (visible by others)
+ */
+export const getUserPublicProfile = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { userId } = req.params;
+
+    // Récupérer l'utilisateur avec ses statistiques
+    const user = await User.findById(userId)
+      .select('name avatar interests goals reputation createdAt')
+      .lean();
+
+    if (!user) {
+      res.status(404).json({ message: 'Utilisateur non trouvé' });
+      return;
+    }
+
+    // Récupérer les activités créées par cet utilisateur
+    const Activity = (await import('../models/activityModel')).default;
+    const activities = await Activity.find({ 
+      createdBy: userId,
+      status: { $in: ['upcoming', 'ongoing', 'completed'] }
+    })
+      .select('title description category date location imageUrl status participants maxParticipants')
+      .sort({ date: -1 })
+      .limit(20)
+      .lean();
+
+    // Récupérer les avis reçus
+    const Review = (await import('../models/reviewModel')).default;
+    const reviews = await Review.find({ reviewee: userId })
+      .populate('reviewer', 'name avatar')
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .lean();
+
+    // Calculer des statistiques supplémentaires
+    const stats = {
+      totalActivitiesCreated: user.reputation?.activitiesCreated || 0,
+      totalActivitiesCompleted: user.reputation?.activitiesCompleted || 0,
+      averageRating: user.reputation?.averageRating || 0,
+      totalReviews: user.reputation?.totalReviews || 0,
+      attendanceRate: user.reputation?.attendanceRate || 0,
+      memberSince: user.createdAt,
+    };
+
+    res.json({
+      user: {
+        _id: user._id,
+        name: user.name,
+        avatar: user.avatar,
+        interests: user.interests,
+        goals: user.goals,
+      },
+      stats,
+      activities,
+      reviews,
+    });
+  } catch (error) {
+    console.error('Error fetching public profile:', error);
+    res.status(500).json({ message: 'Erreur serveur' });
   }
 };
