@@ -87,6 +87,33 @@ class RankingCacheService {
   }
 
   /**
+   * Vérifier si une notification a déjà été envoyée pour ce changement
+   */
+  async hasNotificationBeenSent(userId: string, category: string, rank: number): Promise<boolean> {
+    try {
+      const key = `user:${userId}:notif:${category}:${rank}`;
+      const exists = await redis.get(key);
+      return exists !== null;
+    } catch (error) {
+      console.error('[RankingCache] Error checking notification:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Marquer qu'une notification a été envoyée
+   */
+  async markNotificationSent(userId: string, category: string, rank: number): Promise<void> {
+    try {
+      const key = `user:${userId}:notif:${category}:${rank}`;
+      // Garder pendant 7 jours pour éviter les doublons
+      await redis.setex(key, 7 * 24 * 60 * 60, '1');
+    } catch (error) {
+      console.error('[RankingCache] Error marking notification:', error);
+    }
+  }
+
+  /**
    * Récupérer le rang précédent d'un utilisateur
    */
   async getPreviousRank(userId: string, category: string): Promise<{ rank: number; score: number } | null> {
@@ -118,37 +145,59 @@ class RankingCacheService {
     for (const ranking of newRankings) {
       const previous = await this.getPreviousRank(ranking.userId, category);
       
+      // Vérifier si le rang a changé
+      const hasRankChanged = !previous || previous.rank !== ranking.rank;
+      
+      if (!hasRankChanged) {
+        // Pas de changement, on sauvegarde juste le rang actuel
+        await this.saveUserRank(ranking.userId, category, ranking.rank, ranking.score);
+        continue;
+      }
+      
+      // Le rang a changé, vérifier si on doit envoyer une notification
+      let shouldNotify = false;
+      let enteredTop10 = false;
+      let becameFirst = false;
+      let rankChange = 0;
+      
       if (!previous) {
         // Première fois dans le classement
         if (ranking.rank <= 10) {
-          changes.push({
-            userId: ranking.userId,
-            category,
-            oldRank: null,
-            newRank: ranking.rank,
-            change: 0,
-            enteredTop10: true,
-            becameFirst: ranking.rank === 1,
-          });
+          shouldNotify = true;
+          enteredTop10 = true;
+          becameFirst = ranking.rank === 1;
         }
       } else {
-        const rankChange = previous.rank - ranking.rank; // Positif = amélioration
+        rankChange = previous.rank - ranking.rank; // Positif = amélioration
         
         // Détecter les changements significatifs
-        const enteredTop10 = previous.rank > 10 && ranking.rank <= 10;
-        const becameFirst = previous.rank > 1 && ranking.rank === 1;
+        enteredTop10 = previous.rank > 10 && ranking.rank <= 10;
+        becameFirst = previous.rank > 1 && ranking.rank === 1;
         const significantChange = Math.abs(rankChange) >= 5;
         
-        if (enteredTop10 || becameFirst || significantChange) {
+        shouldNotify = enteredTop10 || becameFirst || significantChange;
+      }
+      
+      // Vérifier si on a déjà envoyé une notification pour ce rang
+      if (shouldNotify) {
+        const alreadySent = await this.hasNotificationBeenSent(ranking.userId, category, ranking.rank);
+        
+        if (!alreadySent) {
           changes.push({
             userId: ranking.userId,
             category,
-            oldRank: previous.rank,
+            oldRank: previous?.rank || null,
             newRank: ranking.rank,
             change: rankChange,
             enteredTop10,
             becameFirst,
           });
+          
+          // Marquer la notification comme envoyée
+          await this.markNotificationSent(ranking.userId, category, ranking.rank);
+          console.log(`[RankingCache] Will notify user ${ranking.userId} for rank ${ranking.rank} in ${category}`);
+        } else {
+          console.log(`[RankingCache] Notification already sent for user ${ranking.userId} rank ${ranking.rank} in ${category}`);
         }
       }
 

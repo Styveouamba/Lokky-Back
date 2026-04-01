@@ -16,10 +16,10 @@ export function startScheduler(): void {
     runScheduledTasks();
   }, 10 * 60 * 1000); // 10 minutes
 
-  // Pré-calcul des rankings toutes les 5 minutes
+  // Pré-calcul des rankings toutes les heures (au lieu de 5 minutes)
   setInterval(() => {
     runRankingPrecomputation();
-  }, 5 * 60 * 1000); // 5 minutes
+  }, 60 * 60 * 1000); // 1 heure
 
   // Envoi des rappels d'activités toutes les 5 minutes
   setInterval(() => {
@@ -33,7 +33,7 @@ export function startScheduler(): void {
 
   console.log('✓ Scheduler started');
   console.log('  - Activity status update: every 10 minutes');
-  console.log('  - Ranking precomputation: every 5 minutes');
+  console.log('  - Ranking precomputation: every 1 hour');
   console.log('  - Activity reminders: every 5 minutes');
   console.log('  - Cleanup expired reminders: every 24 hours');
 }
