@@ -12,5 +12,5 @@ COPY . .
 # Exposer le port
 EXPOSE 3000
 
-# Mode développement avec hot reload
-CMD ["npm", "run", "dev"]
+# Mode développement avec hot reload via nodemon
+CMD ["npx", "nodemon"]

@@ -6,8 +6,9 @@ export interface IUser extends Document {
   name: string;
   avatar?: string;
   role: 'user' | 'admin';
-  authProvider: 'email' | 'apple';
+  authProvider: 'email' | 'apple' | 'google';
   appleId?: string;
+  googleId?: string;
   interests?: string[];
   goals?: string[];
   location?: {
@@ -78,10 +79,14 @@ const userSchema = new Schema<IUser>(
     },
     authProvider: {
       type: String,
-      enum: ['email', 'apple'],
+      enum: ['email', 'apple', 'google'],
       default: 'email',
     },
     appleId: {
+      type: String,
+      sparse: true,
+    },
+    googleId: {
       type: String,
       sparse: true,
     },

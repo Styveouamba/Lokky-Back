@@ -14,12 +14,17 @@
     "docker:clean": "docker-compose down -v",
     "diversity:setup": "node create-diversity-indexes.js",
     "diversity:test": "node test-diversity.js",
-    "reminders:setup": "node create-reminder-indexes.js"
+    "reminders:setup": "node create-reminder-indexes.js",
+    "seed:activities": "node seed-activities.js",
+    "clean:activities": "node clean-seeded-activities.js",
+    "stats:activities": "node stats-activities.js"
   },
   "dependencies": {
     "@types/ioredis": "^4.28.10",
     "@types/multer": "^2.0.0",
+    "@types/nodemailer": "^8.0.0",
     "@types/socket.io": "^3.0.1",
+    "axios": "^1.14.0",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^2.0.0",
     "cors": "^2.8.5",
@@ -27,12 +32,15 @@
     "expo-server-sdk": "^5.0.0",
     "express": "^4.18.2",
     "express-validator": "^7.0.1",
+    "firebase-admin": "^13.8.0",
     "helmet": "^7.1.0",
     "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.0.0",
     "multer": "^2.0.2",
+    "nodemailer": "^8.0.5",
     "redis": "^5.11.0",
+    "resend": "^6.10.0",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {

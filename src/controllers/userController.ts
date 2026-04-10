@@ -3,8 +3,10 @@ import bcrypt from 'bcryptjs';
 import jwt, { SignOptions } from 'jsonwebtoken';
 import fs from 'fs';
 import User from '../models/userModel';
+import VerificationCode from '../models/verificationCodeModel';
 import { AuthRequest } from '../middleware/authMiddleware';
 import { uploadImage } from '../utils/cloudinary';
+import { sendVerificationEmail } from '../services/emailService';
 
 const generateToken = (userId: any): string => {
   const jwtSecret = process.env.JWT_SECRET;
@@ -13,10 +15,90 @@ const generateToken = (userId: any): string => {
   }
 
   const signOptions: SignOptions = {
-    expiresIn: (process.env.JWT_EXPIRES_IN || '7d') as any
+    expiresIn: (process.env.JWT_EXPIRES_IN || '365d') as any
   };
 
   return jwt.sign({ userId }, jwtSecret, signOptions);
+};
+
+// Générer un code à 4 chiffres
+const generateVerificationCode = (): string => {
+  return Math.floor(1000 + Math.random() * 9000).toString();
+};
+
+// Envoyer un code de vérification
+export const sendVerificationCode = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email, name } = req.body;
+
+    if (!email || !name) {
+      res.status(400).json({ message: 'Email et nom requis' });
+      return;
+    }
+
+    // Vérifier si l'email existe déjà
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      res.status(400).json({ message: 'Cet email est déjà utilisé' });
+      return;
+    }
+
+    // Générer un code à 4 chiffres
+    const code = generateVerificationCode();
+
+    // Supprimer les anciens codes pour cet email
+    await VerificationCode.deleteMany({ email });
+
+    // Créer un nouveau code
+    await VerificationCode.create({
+      email,
+      code,
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
+    });
+
+    // Envoyer l'email
+    await sendVerificationEmail(email, code, name);
+
+    res.json({ message: 'Code de vérification envoyé' });
+  } catch (error: any) {
+    console.error('Send verification code error:', error);
+    res.status(500).json({ 
+      message: 'Erreur lors de l\'envoi du code',
+      error: error.message 
+    });
+  }
+};
+
+// Vérifier le code
+export const verifyCode = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email, code } = req.body;
+
+    if (!email || !code) {
+      res.status(400).json({ message: 'Email et code requis' });
+      return;
+    }
+
+    // Chercher le code
+    const verificationCode = await VerificationCode.findOne({
+      email,
+      code,
+      expiresAt: { $gt: new Date() },
+    });
+
+    if (!verificationCode) {
+      res.status(400).json({ message: 'Code invalide ou expiré' });
+      return;
+    }
+
+    // NE PAS supprimer le code ici - il sera supprimé lors de l'utilisation finale
+    // (création de compte ou réinitialisation de mot de passe)
+
+    res.json({ message: 'Code vérifié avec succès', verified: true });
+  } catch (error) {
+    console.error('Verify code error:', error);
+    res.status(500).json({ message: 'Erreur lors de la vérification du code' });
+  }
 };
 
 export const register = async (req: Request, res: Response): Promise<void> => {
@@ -90,6 +172,153 @@ export const login = async (req: Request, res: Response): Promise<void> => {
     });
   } catch (error) {
     res.status(500).json({ message: 'Erreur lors de la connexion' });
+  }
+};
+
+export const googleAuth = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { idToken } = req.body;
+
+    if (!idToken) {
+      res.status(400).json({ message: 'Token Firebase manquant' });
+      return;
+    }
+
+    // Vérifier le token Firebase
+    const { firebaseAuth } = await import('../config/firebase');
+    const decodedToken = await firebaseAuth.verifyIdToken(idToken);
+    
+    const { email, name, picture, uid } = decodedToken;
+
+    if (!email) {
+      res.status(400).json({ message: 'Email manquant dans le token Google' });
+      return;
+    }
+
+    // Chercher ou créer l'utilisateur
+    let user = await User.findOne({ email });
+
+    if (!user) {
+      // Créer un nouvel utilisateur
+      user = await User.create({
+        email,
+        name: name || email.split('@')[0],
+        avatar: picture || undefined,
+        authProvider: 'google',
+        googleId: uid,
+        password: '', // Pas de mot de passe pour les utilisateurs Google
+      });
+    } else if (user.authProvider !== 'google') {
+      // L'utilisateur existe déjà avec un autre provider
+      res.status(400).json({ 
+        message: 'Un compte existe déjà avec cet email. Veuillez vous connecter avec votre mot de passe.' 
+      });
+      return;
+    }
+
+    // Générer notre propre JWT
+    const token = generateToken(user._id);
+
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        avatar: user.avatar,
+        role: user.role,
+        interests: user.interests,
+        goals: user.goals,
+        location: user.location,
+      },
+    });
+  } catch (error: any) {
+    console.error('Google auth error:', error);
+    res.status(500).json({ 
+      message: 'Erreur lors de l\'authentification Google',
+      error: error.message 
+    });
+  }
+};
+
+export const appleAuth = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { identityToken, user: appleUser } = req.body;
+
+    if (!identityToken) {
+      res.status(400).json({ message: 'Token Apple manquant' });
+      return;
+    }
+
+    // Décoder le token Apple (JWT)
+    const decoded: any = jwt.decode(identityToken);
+    
+    if (!decoded || !decoded.sub) {
+      res.status(400).json({ message: 'Token Apple invalide' });
+      return;
+    }
+
+    const appleId = decoded.sub;
+    const email = decoded.email || appleUser?.email;
+
+    // Si pas d'email, utiliser un email généré
+    const userEmail = email || `${appleId}@privaterelay.appleid.com`;
+
+    // Chercher l'utilisateur par appleId ou email
+    let user = await User.findOne({
+      $or: [
+        { appleId },
+        { email: userEmail }
+      ]
+    });
+
+    if (!user) {
+      // Créer un nouvel utilisateur
+      const name = appleUser?.fullName 
+        ? `${appleUser.fullName.givenName || ''} ${appleUser.fullName.familyName || ''}`.trim()
+        : userEmail.split('@')[0];
+
+      user = await User.create({
+        email: userEmail,
+        name: name || 'Utilisateur Apple',
+        authProvider: 'apple',
+        appleId,
+        password: '', // Pas de mot de passe pour les utilisateurs Apple
+      });
+    } else if (user.authProvider !== 'apple') {
+      // L'utilisateur existe déjà avec un autre provider
+      res.status(400).json({ 
+        message: 'Un compte existe déjà avec cet email. Veuillez vous connecter avec votre mot de passe.' 
+      });
+      return;
+    } else if (!user.appleId) {
+      // Mettre à jour l'appleId si manquant
+      user.appleId = appleId;
+      await user.save();
+    }
+
+    // Générer notre propre JWT
+    const token = generateToken(user._id);
+
+    res.json({
+      token,
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        avatar: user.avatar,
+        role: user.role,
+        interests: user.interests,
+        goals: user.goals,
+        location: user.location,
+      },
+    });
+  } catch (error: any) {
+    console.error('Apple auth error:', error);
+    res.status(500).json({ 
+      message: 'Erreur lors de l\'authentification Apple',
+      error: error.message 
+    });
   }
 };
 
@@ -535,7 +764,17 @@ export const getLeaderboard = async (req: AuthRequest, res: Response): Promise<v
 
     // Essayer de récupérer depuis le cache Redis
     const { rankingCacheService } = await import('../services/rankingCacheService');
-    const cached = await rankingCacheService.getLeaderboard(type as string);
+    let cached = null;
+    
+    // DÉSACTIVER LE CACHE POUR LE TYPE 'active' car on calcule dynamiquement
+    if (type !== 'active') {
+      try {
+        cached = await rankingCacheService.getLeaderboard(type as string);
+      } catch (cacheError) {
+        console.error('[Leaderboard] Cache error, will fetch from DB:', cacheError);
+        cached = null;
+      }
+    }
     
     if (cached && cached.length > 0) {
       console.log(`[Leaderboard] Cache hit with ${cached.length} entries`);
@@ -614,9 +853,10 @@ export const getLeaderboard = async (req: AuthRequest, res: Response): Promise<v
         break;
       
       case 'active':
-        // Classement par nombre d'activités complétées
-        sortCriteria = { 'reputation.activitiesCompleted': -1 };
-        minCriteria = { 'reputation.activitiesCompleted': { $gt: 0 } };
+        // Pour le type active, on va récupérer tous les utilisateurs et trier après
+        // car on doit calculer dynamiquement les activités complétées
+        sortCriteria = { 'createdAt': -1 }; // Tri temporaire
+        minCriteria = {}; // Pas de critère minimum, on filtrera après
         break;
       
       default:
@@ -625,15 +865,78 @@ export const getLeaderboard = async (req: AuthRequest, res: Response): Promise<v
     }
 
     // Récupérer le top du leaderboard
+    // Pour le type 'active', on récupère plus d'utilisateurs car on va filtrer après
+    const queryLimit = type === 'active' ? 200 : limit;
+    
     const leaderboard = await User.find({
       ...minCriteria,
       'moderation.status': { $ne: 'banned' },
     })
       .select('name avatar reputation')
       .sort(sortCriteria)
-      .limit(limit)
+      .limit(queryLimit)
       .lean();
 
+    // Si c'est le classement "active", calculer dynamiquement les activités complétées
+    if (type === 'active') {
+      const Activity = (await import('../models/activityModel')).default;
+      
+      // Pour chaque utilisateur, compter ses activités complétées
+      const leaderboardWithCounts = await Promise.all(
+        leaderboard.map(async (user) => {
+          const completedCount = await Activity.countDocuments({
+            createdBy: user._id,
+            status: 'completed'
+          });
+          
+          return {
+            ...user,
+            reputation: {
+              ...user.reputation,
+              activitiesCompleted: completedCount
+            }
+          };
+        })
+      );
+      
+      // Retrier par le nombre réel d'activités complétées
+      leaderboardWithCounts.sort((a, b) => 
+        (b.reputation?.activitiesCompleted || 0) - (a.reputation?.activitiesCompleted || 0)
+      );
+      
+      // Filtrer ceux qui ont au moins 1 activité complétée et limiter à 50
+      const filteredLeaderboard = leaderboardWithCounts
+        .filter(u => (u.reputation?.activitiesCompleted || 0) > 0)
+        .slice(0, limit); // Limiter à 50 résultats
+
+      // Préparer les données pour le cache
+      const rankingsData = filteredLeaderboard.map((user, index) => ({
+        userId: user._id.toString(),
+        rank: index + 1,
+        score: user.reputation?.activitiesCompleted || 0,
+        category: type as 'creators' | 'ratings' | 'active',
+      }));
+
+      // Mettre en cache
+      await rankingCacheService.cacheLeaderboard(type as string, rankingsData);
+
+      // Trouver le rang de l'utilisateur actuel
+      let myRank = null;
+      if (userId) {
+        const userIndex = rankingsData.findIndex(r => r.userId === userId);
+        myRank = userIndex !== -1 ? userIndex + 1 : null;
+      }
+
+      res.json({
+        leaderboard: filteredLeaderboard,
+        myRank,
+        type,
+        cached: false,
+      });
+      return;
+    }
+
+    // Pour les autres types, continuer normalement
     // Préparer les données pour le cache et la détection de changements
     const rankingsData = leaderboard.map((user, index) => {
       let score = 0;
@@ -643,9 +946,6 @@ export const getLeaderboard = async (req: AuthRequest, res: Response): Promise<v
           break;
         case 'ratings':
           score = user.reputation?.averageRating || 0;
-          break;
-        case 'active':
-          score = user.reputation?.activitiesCompleted || 0;
           break;
       }
 
@@ -736,6 +1036,12 @@ export const getUserPublicProfile = async (req: AuthRequest, res: Response): Pro
       .limit(20)
       .lean();
 
+    // Compter les activités complétées (toutes, pas seulement les 20 dernières)
+    const completedActivitiesCount = await Activity.countDocuments({
+      createdBy: userId,
+      status: 'completed'
+    });
+
     // Récupérer les avis reçus
     const Review = (await import('../models/reviewModel')).default;
     const reviews = await Review.find({ reviewee: userId })
@@ -747,7 +1053,7 @@ export const getUserPublicProfile = async (req: AuthRequest, res: Response): Pro
     // Calculer des statistiques supplémentaires
     const stats = {
       totalActivitiesCreated: user.reputation?.activitiesCreated || 0,
-      totalActivitiesCompleted: user.reputation?.activitiesCompleted || 0,
+      totalActivitiesCompleted: completedActivitiesCount, // Utiliser le compte réel
       averageRating: user.reputation?.averageRating || 0,
       totalReviews: user.reputation?.totalReviews || 0,
       attendanceRate: user.reputation?.attendanceRate || 0,
@@ -769,5 +1075,169 @@ export const getUserPublicProfile = async (req: AuthRequest, res: Response): Pro
   } catch (error) {
     console.error('Error fetching public profile:', error);
     res.status(500).json({ message: 'Erreur serveur' });
+  }
+};
+
+// Envoyer un code de réinitialisation de mot de passe
+export const sendPasswordResetCode = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      res.status(400).json({ message: 'Email requis' });
+      return;
+    }
+
+    // Vérifier si l'utilisateur existe
+    const user = await User.findOne({ email });
+    if (!user) {
+      res.status(404).json({ message: 'Aucun compte trouvé avec cet email' });
+      return;
+    }
+
+    // Vérifier que l'utilisateur utilise l'authentification par email
+    if (user.authProvider !== 'email') {
+      res.status(400).json({ 
+        message: `Ce compte utilise l'authentification ${user.authProvider}. Veuillez vous connecter avec ${user.authProvider}.` 
+      });
+      return;
+    }
+
+    // Générer un code à 4 chiffres
+    const code = generateVerificationCode();
+
+    // Supprimer les anciens codes pour cet email
+    await VerificationCode.deleteMany({ email });
+
+    // Créer un nouveau code
+    await VerificationCode.create({
+      email,
+      code,
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
+    });
+
+    // Envoyer l'email
+    const { sendPasswordResetEmail } = await import('../services/emailService');
+    await sendPasswordResetEmail(email, code, user.name);
+
+    res.json({ message: 'Code de réinitialisation envoyé' });
+  } catch (error: any) {
+    console.error('Send password reset code error:', error);
+    res.status(500).json({ 
+      message: 'Erreur lors de l\'envoi du code',
+      error: error.message 
+    });
+  }
+};
+
+// Réinitialiser le mot de passe
+export const resetPassword = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { email, code, newPassword } = req.body;
+
+    if (!email || !code || !newPassword) {
+      res.status(400).json({ message: 'Email, code et nouveau mot de passe requis' });
+      return;
+    }
+
+    // Vérifier le code
+    const verificationCode = await VerificationCode.findOne({
+      email,
+      code,
+      expiresAt: { $gt: new Date() },
+    });
+
+    if (!verificationCode) {
+      res.status(400).json({ message: 'Code invalide ou expiré' });
+      return;
+    }
+
+    // Trouver l'utilisateur
+    const user = await User.findOne({ email });
+    if (!user) {
+      res.status(404).json({ message: 'Utilisateur non trouvé' });
+      return;
+    }
+
+    // Hasher le nouveau mot de passe
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    // Mettre à jour le mot de passe
+    user.password = hashedPassword;
+    await user.save();
+
+    // Supprimer le code après utilisation
+    await VerificationCode.deleteOne({ _id: verificationCode._id });
+
+    // Générer un nouveau token
+    const token = generateToken(user._id);
+
+    res.json({
+      message: 'Mot de passe réinitialisé avec succès',
+      token,
+      user: {
+        id: user._id,
+        email: user.email,
+        name: user.name,
+        avatar: user.avatar,
+        interests: user.interests,
+        goals: user.goals,
+        location: user.location,
+      },
+    });
+  } catch (error: any) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ 
+      message: 'Erreur lors de la réinitialisation du mot de passe',
+      error: error.message 
+    });
+  }
+};
+
+// Rechercher des utilisateurs par nom
+export const searchUsers = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { query } = req.query;
+    const userId = (req as AuthRequest).userId;
+
+    if (!query || typeof query !== 'string') {
+      res.status(400).json({ message: 'Query requis' });
+      return;
+    }
+
+    if (!userId) {
+      res.status(401).json({ message: 'Non authentifié' });
+      return;
+    }
+
+    // Rechercher les utilisateurs par nom (insensible à la casse)
+    const users = await User.find({
+      _id: { $ne: userId }, // Exclure l'utilisateur actuel
+      name: { $regex: query, $options: 'i' },
+      'moderation.status': { $ne: 'banned' },
+    })
+      .select('name avatar interests goals reputation')
+      .limit(20)
+      .lean();
+
+    // Pour chaque utilisateur, compter le nombre d'activités créées
+    const Activity = (await import('../models/activityModel')).default;
+    const usersWithActivityCount = await Promise.all(
+      users.map(async (user) => {
+        const activityCount = await Activity.countDocuments({
+          createdBy: user._id,
+          status: { $in: ['upcoming', 'ongoing'] },
+        });
+        return {
+          ...user,
+          activityCount,
+        };
+      })
+    );
+
+    res.json(usersWithActivityCount);
+  } catch (error) {
+    console.error('Search users error:', error);
+    res.status(500).json({ message: 'Erreur lors de la recherche' });
   }
 };
