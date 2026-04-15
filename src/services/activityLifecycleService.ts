@@ -42,6 +42,20 @@ export async function updateActivityStatus(activityId: string): Promise<IActivit
       activity.status = newStatus;
       await activity.save();
 
+      // Notifier via Socket.IO du changement de statut
+      try {
+        const { getIO } = await import('../socket/socketHandler');
+        const io = getIO();
+        io.emit('activity_status_changed', {
+          activityId: activity._id.toString(),
+          status: newStatus,
+          oldStatus,
+        });
+        console.log(`Notified status change for activity ${activityId}: ${oldStatus} -> ${newStatus}`);
+      } catch (error) {
+        console.error('Error notifying status change:', error);
+      }
+
       // Si l'activité vient de se terminer, envoyer des notifications
       if (newStatus === 'completed' && oldStatus !== 'completed') {
         await notifyActivityCompleted(activity);

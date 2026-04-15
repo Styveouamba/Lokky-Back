@@ -383,3 +383,59 @@ export const deleteConversation = async (req: AuthRequest, res: Response): Promi
     res.status(500).json({ message: 'Erreur lors de la suppression' });
   }
 };
+
+// Récupérer les compteurs de messages non lus pour toutes les conversations
+export const getUnreadCounts = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    // Récupérer toutes les conversations de l'utilisateur
+    const conversations = await Conversation.find({
+      participants: req.userId,
+    }).select('_id');
+
+    // Récupérer tous les groupes de l'utilisateur
+    const groups = await Group.find({
+      members: req.userId,
+    }).select('_id');
+
+    // Combiner les IDs
+    const allConversationIds = [
+      ...conversations.map(c => c._id),
+      ...groups.map(g => g._id),
+    ];
+
+    // Compter les messages non lus pour chaque conversation/groupe
+    const counts = await Promise.all(
+      allConversationIds.map(async (convId) => {
+        // Vérifier si c'est une conversation ou un groupe
+        const isConversation = conversations.some(c => c._id.equals(convId));
+        
+        const query: any = {
+          sender: { $ne: req.userId },
+          read: false,
+          deletedFor: { $ne: req.userId },
+        };
+
+        if (isConversation) {
+          query.conversation = convId;
+        } else {
+          query.group = convId;
+        }
+
+        const count = await Message.countDocuments(query);
+
+        return {
+          conversationId: convId.toString(),
+          count,
+        };
+      })
+    );
+
+    // Filtrer pour ne retourner que ceux avec des messages non lus
+    const nonZeroCounts = counts.filter(c => c.count > 0);
+
+    res.json({ counts: nonZeroCounts });
+  } catch (error) {
+    console.error('Get unread counts error:', error);
+    res.status(500).json({ message: 'Erreur lors de la récupération des compteurs' });
+  }
+};

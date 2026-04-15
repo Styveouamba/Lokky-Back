@@ -11,6 +11,7 @@ import reviewRoutes from './routes/reviewRoutes';
 import moderationRoutes from './routes/moderationRoutes';
 import adminRoutes from './routes/adminRoutes';
 import achievementRoutes from './routes/achievementRoutes';
+import appRoutes from './routes/appRoutes';
 import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -52,6 +53,7 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/moderation', moderationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/achievements', achievementRoutes);
+app.use('/api/app', appRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

@@ -8,6 +8,7 @@ import {
   deleteMessageForMe,
   deleteMessageForEveryone,
   deleteConversation,
+  getUnreadCounts,
 } from '../controllers/messageController';
 import { authMiddleware } from '../middleware/authMiddleware';
 import { checkModerationStatus } from '../middleware/rateLimitMiddleware';
@@ -20,6 +21,9 @@ router.use(checkModerationStatus);
 
 // Récupérer toutes les conversations
 router.get('/conversations', getConversations);
+
+// Récupérer les compteurs de messages non lus
+router.get('/unread-counts', getUnreadCounts);
 
 // Créer ou récupérer une conversation avec un utilisateur
 router.get('/conversations/:userId', getOrCreateConversation);
