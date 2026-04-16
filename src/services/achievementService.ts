@@ -27,12 +27,12 @@ const ACHIEVEMENTS = {
   },
   activities_5: {
     title: '🔥 Actif',
-    description: 'Tu as participé à 5 activités!',
+    description: 'Tu as complété 5 activités avec présence confirmée!',
     icon: '🔥',
   },
   activities_10: {
     title: '👑 Légende',
-    description: 'Incroyable! 10 activités complétées!',
+    description: 'Incroyable! 10 activités complétées avec présence!',
     icon: '👑',
   },
   perfect_attendance: {
@@ -137,21 +137,28 @@ export const checkActivityJoinAchievements = async (
     awarded.push(firstJoin.achievement);
   }
 
-  // Compter le nombre de participations
+  // Compter le nombre de participations (pour information)
   const participationsCount = await Activity.countDocuments({
     participants: userId,
   });
 
-  // Achievement pour 5 participations
-  if (participationsCount >= 5) {
+  // Récupérer l'utilisateur pour vérifier les activités complétées
+  const user = await User.findById(userId);
+  if (!user) return awarded;
+
+  // Les achievements se basent sur les activités COMPLÉTÉES (avec présence confirmée)
+  const activitiesCompleted = user.reputation?.activitiesCompleted || 0;
+
+  // Achievement pour 5 activités complétées
+  if (activitiesCompleted >= 5) {
     const activities5 = await checkAndAwardAchievement(userId, 'activities_5');
     if (activities5.awarded) {
       awarded.push(activities5.achievement);
     }
   }
 
-  // Achievement pour 10 participations
-  if (participationsCount >= 10) {
+  // Achievement pour 10 activités complétées
+  if (activitiesCompleted >= 10) {
     const activities10 = await checkAndAwardAchievement(userId, 'activities_10');
     if (activities10.awarded) {
       awarded.push(activities10.achievement);
@@ -159,8 +166,7 @@ export const checkActivityJoinAchievements = async (
   }
 
   // Vérifier le taux de présence pour "perfect_attendance"
-  const user = await User.findById(userId);
-  if (user && user.reputation && user.reputation.attendanceRate === 100 && participationsCount >= 5) {
+  if (user.reputation && user.reputation.attendanceRate === 100 && participationsCount >= 5) {
     const perfectAttendance = await checkAndAwardAchievement(userId, 'perfect_attendance');
     if (perfectAttendance.awarded) {
       awarded.push(perfectAttendance.achievement);
@@ -194,9 +200,41 @@ export const checkReviewAchievements = async (
 ): Promise<any[]> => {
   const awarded = [];
 
+  // Premier achievement: premier avis
   const firstReview = await checkAndAwardAchievement(userId, 'first_review');
   if (firstReview.awarded) {
     awarded.push(firstReview.achievement);
+  }
+
+  // Récupérer l'utilisateur pour vérifier les activités complétées
+  const user = await User.findById(userId);
+  if (!user) return awarded;
+
+  // Vérifier les achievements basés sur les activités complétées
+  const activitiesCompleted = user.reputation?.activitiesCompleted || 0;
+
+  // Achievement pour 5 activités complétées
+  if (activitiesCompleted >= 5) {
+    const activities5 = await checkAndAwardAchievement(userId, 'activities_5');
+    if (activities5.awarded) {
+      awarded.push(activities5.achievement);
+    }
+  }
+
+  // Achievement pour 10 activités complétées
+  if (activitiesCompleted >= 10) {
+    const activities10 = await checkAndAwardAchievement(userId, 'activities_10');
+    if (activities10.awarded) {
+      awarded.push(activities10.achievement);
+    }
+  }
+
+  // Vérifier le taux de présence pour "perfect_attendance"
+  if (user.reputation && user.reputation.attendanceRate === 100 && activitiesCompleted >= 5) {
+    const perfectAttendance = await checkAndAwardAchievement(userId, 'perfect_attendance');
+    if (perfectAttendance.awarded) {
+      awarded.push(perfectAttendance.achievement);
+    }
   }
 
   return awarded;

@@ -22,7 +22,7 @@ interface RankingData {
   userId: string;
   rank: number;
   score: number;
-  category: 'creators' | 'ratings' | 'active';
+  category: 'creators' | 'ratings' | 'activities';
 }
 
 interface RankChange {
@@ -214,7 +214,7 @@ class RankingCacheService {
   async invalidateActivityCache(activityId: string): Promise<void> {
     try {
       // Invalider tous les leaderboards car une activité peut affecter plusieurs classements
-      await redis.del('leaderboard:creators', 'leaderboard:ratings', 'leaderboard:active');
+      await redis.del('leaderboard:creators', 'leaderboard:ratings', 'leaderboard:activities');
       console.log(`[RankingCache] Invalidated cache for activity ${activityId}`);
     } catch (error) {
       console.error('[RankingCache] Error invalidating cache:', error);
@@ -288,7 +288,7 @@ class RankingCacheService {
             case 'ratings':
               score = user.reputation?.averageRating || 0;
               break;
-            case 'active':
+            case 'activities':
               score = user.reputation?.activitiesCompleted || 0;
               break;
           }
@@ -297,7 +297,7 @@ class RankingCacheService {
             userId: user._id.toString(),
             rank: index + 1,
             score,
-            category: category as 'creators' | 'ratings' | 'active',
+            category: category as 'creators' | 'ratings' | 'activities',
           };
         });
 

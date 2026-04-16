@@ -65,7 +65,14 @@ export const createReview = async (req: AuthRequest, res: Response): Promise<voi
       .populate('reviewer', 'name avatar')
       .populate('reviewee', 'name avatar');
 
-    res.status(201).json(populatedReview);
+    // Vérifier et attribuer les achievements pour le premier avis
+    const { checkReviewAchievements } = await import('../services/achievementService');
+    const achievements = await checkReviewAchievements(req.userId!);
+
+    res.status(201).json({
+      ...(populatedReview?.toObject() || {}),
+      newAchievements: achievements, // Envoyer les nouveaux achievements au frontend
+    });
   } catch (error: any) {
     console.error('Create review error:', error);
     res.status(500).json({ message: 'Erreur lors de la création de l\'avis' });

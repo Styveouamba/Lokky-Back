@@ -75,6 +75,12 @@ export const createActivity = async (req: AuthRequest, res: Response): Promise<v
     // Vérifier et attribuer les achievements
     const achievements = await checkActivityCreationAchievements(req.userId!);
     
+    // Envoyer des notifications aux utilisateurs proches (en arrière-plan)
+    const { notifyNearbyUsersForNewActivity } = await import('../services/smartNotificationService');
+    notifyNearbyUsersForNewActivity(activity._id).catch(err => {
+      console.error('[CreateActivity] Error sending nearby notifications:', err);
+    });
+    
     res.status(201).json({
       ...(populatedActivity?.toObject() || {}),
       newAchievements: achievements, // Envoyer les nouveaux achievements au frontend
@@ -313,6 +319,15 @@ export const joinActivity = async (req: AuthRequest, res: Response): Promise<voi
 
     // Vérifier et attribuer les achievements
     const achievements = await checkActivityJoinAchievements(req.userId!);
+
+    // Vérifier si l'activité devient populaire (70%+ remplie)
+    const fillRate = (activity.participants.length / activity.maxParticipants) * 100;
+    if (fillRate >= 70) {
+      const { notifyPopularActivityFilling } = await import('../services/smartNotificationService');
+      notifyPopularActivityFilling(activity._id).catch(err => {
+        console.error('[JoinActivity] Error sending popular activity notifications:', err);
+      });
+    }
 
     res.json({
       ...(populatedActivity?.toObject() || {}),

@@ -45,6 +45,11 @@ export interface IUser extends Document {
     lastMessageSent?: Date;
     messagesLastMinute: number;
   };
+  deletion?: {
+    requestedAt?: Date;
+    scheduledFor?: Date;
+    isDeleted: boolean;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -206,6 +211,18 @@ const userSchema = new Schema<IUser>(
       messagesLastMinute: {
         type: Number,
         default: 0,
+      },
+    },
+    deletion: {
+      requestedAt: {
+        type: Date,
+      },
+      scheduledFor: {
+        type: Date,
+      },
+      isDeleted: {
+        type: Boolean,
+        default: false,
       },
     },
   },

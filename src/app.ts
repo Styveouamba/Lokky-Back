@@ -42,6 +42,9 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Servir les fichiers statiques pour les App Links / Universal Links
+app.use('/.well-known', express.static('public/.well-known'));
+
 // Routes
 app.use('/api/users', userRoutes);
 app.use('/api/activities', activityRoutes);

@@ -766,8 +766,8 @@ export const getLeaderboard = async (req: AuthRequest, res: Response): Promise<v
     const { rankingCacheService } = await import('../services/rankingCacheService');
     let cached = null;
     
-    // DÉSACTIVER LE CACHE POUR LE TYPE 'active' car on calcule dynamiquement
-    if (type !== 'active') {
+    // DÉSACTIVER LE CACHE POUR LE TYPE 'activities' car on calcule dynamiquement
+    if (type !== 'activities') {
       try {
         cached = await rankingCacheService.getLeaderboard(type as string);
       } catch (cacheError) {
@@ -852,8 +852,8 @@ export const getLeaderboard = async (req: AuthRequest, res: Response): Promise<v
         minCriteria = { 'reputation.totalReviews': { $gte: 3 } };
         break;
       
-      case 'active':
-        // Pour le type active, on va récupérer tous les utilisateurs et trier après
+      case 'activities':
+        // Pour le type activities, on va récupérer tous les utilisateurs et trier après
         // car on doit calculer dynamiquement les activités complétées
         sortCriteria = { 'createdAt': -1 }; // Tri temporaire
         minCriteria = {}; // Pas de critère minimum, on filtrera après
@@ -865,8 +865,8 @@ export const getLeaderboard = async (req: AuthRequest, res: Response): Promise<v
     }
 
     // Récupérer le top du leaderboard
-    // Pour le type 'active', on récupère plus d'utilisateurs car on va filtrer après
-    const queryLimit = type === 'active' ? 200 : limit;
+    // Pour le type 'activities', on récupère plus d'utilisateurs car on va filtrer après
+    const queryLimit = type === 'activities' ? 200 : limit;
     
     const leaderboard = await User.find({
       ...minCriteria,
@@ -877,15 +877,15 @@ export const getLeaderboard = async (req: AuthRequest, res: Response): Promise<v
       .limit(queryLimit)
       .lean();
 
-    // Si c'est le classement "active", calculer dynamiquement les activités complétées
-    if (type === 'active') {
+    // Si c'est le classement "activities", calculer dynamiquement les activités complétées
+    if (type === 'activities') {
       const Activity = (await import('../models/activityModel')).default;
       
-      // Pour chaque utilisateur, compter ses activités complétées
+      // Pour chaque utilisateur, compter ses activités complétées (où il est participant)
       const leaderboardWithCounts = await Promise.all(
         leaderboard.map(async (user) => {
           const completedCount = await Activity.countDocuments({
-            createdBy: user._id,
+            participants: user._id,
             status: 'completed'
           });
           
@@ -914,7 +914,7 @@ export const getLeaderboard = async (req: AuthRequest, res: Response): Promise<v
         userId: user._id.toString(),
         rank: index + 1,
         score: user.reputation?.activitiesCompleted || 0,
-        category: type as 'creators' | 'ratings' | 'active',
+        category: type as 'creators' | 'ratings' | 'activities',
       }));
 
       // Mettre en cache
@@ -953,7 +953,7 @@ export const getLeaderboard = async (req: AuthRequest, res: Response): Promise<v
         userId: user._id.toString(),
         rank: index + 1,
         score,
-        category: type as 'creators' | 'ratings' | 'active',
+        category: type as 'creators' | 'ratings' | 'activities',
       };
     });
 
@@ -1239,5 +1239,57 @@ export const searchUsers = async (req: Request, res: Response): Promise<void> =>
   } catch (error) {
     console.error('Search users error:', error);
     res.status(500).json({ message: 'Erreur lors de la recherche' });
+  }
+};
+
+
+/**
+ * Delete account (soft delete with 10 days grace period)
+ */
+export const deleteAccount = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId;
+
+    if (!userId) {
+      res.status(401).json({ message: 'Non autorisé' });
+      return;
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      res.status(404).json({ message: 'Utilisateur non trouvé' });
+      return;
+    }
+
+    // Calculer la date de suppression définitive (10 jours)
+    const scheduledDeletionDate = new Date();
+    scheduledDeletionDate.setDate(scheduledDeletionDate.getDate() + 10);
+
+    // Marquer le compte pour suppression
+    user.deletion = {
+      requestedAt: new Date(),
+      scheduledFor: scheduledDeletionDate,
+      isDeleted: true,
+    };
+
+    // Désactiver le compte
+    if (user.moderation) {
+      user.moderation.status = 'suspended';
+      user.moderation.suspendedUntil = scheduledDeletionDate;
+    }
+
+    await user.save();
+
+    console.log(`[DeleteAccount] User ${userId} marked for deletion on ${scheduledDeletionDate}`);
+
+    res.json({
+      message: 'Compte marqué pour suppression',
+      scheduledFor: scheduledDeletionDate,
+      gracePeriodDays: 10,
+    });
+  } catch (error) {
+    console.error('Delete account error:', error);
+    res.status(500).json({ message: 'Erreur serveur' });
   }
 };

@@ -60,4 +60,16 @@ router.delete('/activities/:activityId', deleteActivity);
 router.get('/reports', getReports);
 router.patch('/reports/:reportId/process', processReport);
 
+// Test des notifications intelligentes
+router.post('/test/discovery-notifications', async (req, res) => {
+  try {
+    const { sendDiscoveryNotifications } = await import('../services/smartNotificationService');
+    await sendDiscoveryNotifications();
+    res.json({ message: 'Discovery notifications sent successfully' });
+  } catch (error: any) {
+    console.error('Error sending discovery notifications:', error);
+    res.status(500).json({ message: 'Error sending notifications', error: error.message });
+  }
+});
+
 export default router;

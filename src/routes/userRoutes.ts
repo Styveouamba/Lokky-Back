@@ -21,6 +21,7 @@ import {
   getLeaderboard,
   getUserPublicProfile,
   searchUsers,
+  deleteAccount,
 } from '../controllers/userController';
 import { authMiddleware } from '../middleware/authMiddleware';
 
@@ -69,5 +70,8 @@ router.get('/public-profile/:userId', authMiddleware, getUserPublicProfile);
 
 // Route de recherche d'utilisateurs
 router.get('/search', authMiddleware, searchUsers);
+
+// Route de suppression de compte
+router.delete('/delete-account', authMiddleware, deleteAccount);
 
 export default router;

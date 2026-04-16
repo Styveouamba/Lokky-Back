@@ -167,6 +167,15 @@ export const setupSocketHandlers = (ioInstance: Server) => {
         // Peupler les infos du sender
         await message.populate('sender', 'name avatar');
 
+        // Vérifier et attribuer les achievements pour le premier message
+        const { checkMessageAchievements } = await import('../services/achievementService');
+        const achievements = await checkMessageAchievements(socket.userId!);
+        
+        // Si des achievements ont été débloqués, les envoyer au client
+        if (achievements.length > 0) {
+          socket.emit('new_achievements', achievements);
+        }
+
         // Mettre à jour la conversation (seulement pour les conversations 1-à-1)
         if (conversation) {
           await Conversation.findByIdAndUpdate(conversationId, {

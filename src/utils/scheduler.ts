@@ -1,6 +1,7 @@
 import { updateAllActivityStatuses, processScheduledNotifications } from '../services/activityLifecycleService';
 import { rankingCacheService } from '../services/rankingCacheService';
 import { sendPendingReminders, cleanupExpiredReminders } from '../services/activityReminderService';
+import { sendDiscoveryNotifications } from '../services/smartNotificationService';
 
 /**
  * Démarre les tâches planifiées
@@ -16,12 +17,7 @@ export function startScheduler(): void {
     runScheduledTasks();
   }, 10 * 60 * 1000); // 10 minutes
 
-  // DÉSACTIVÉ: Pré-calcul des rankings
-  // Les notifications de rang sont maintenant envoyées uniquement via Socket.IO
-  // quand un utilisateur consulte le leaderboard
-  // setInterval(() => {
-  //   runRankingPrecomputation();
-  // }, 60 * 60 * 1000); // 1 heure
+ 
 
   // Envoi des rappels d'activités toutes les 5 minutes
   setInterval(() => {
@@ -33,11 +29,45 @@ export function startScheduler(): void {
     runCleanupTasks();
   }, 24 * 60 * 60 * 1000); // 24 heures
 
-  console.log('✓ Scheduler started');
-  console.log('  - Activity status update: every 10 minutes');
-  console.log('  - Ranking precomputation: DISABLED (notifications via Socket.IO only)');
-  console.log('  - Activity reminders: every 5 minutes');
-  console.log('  - Cleanup expired reminders: every 24 hours');
+  // Notifications de découverte aléatoires 1 fois par jour (18h)
+  scheduleDiscoveryNotifications();
+
+}
+
+/**
+ * Planifie les notifications de découverte à 18h chaque jour
+ */
+function scheduleDiscoveryNotifications(): void {
+  // Calculer le temps jusqu'à la prochaine exécution (13h)
+  const now = new Date();
+  const currentHour = now.getHours();
+  
+  const nextRun = new Date();
+  nextRun.setHours(13, 0, 0, 0);
+  
+  // Si on est déjà passé 18h aujourd'hui, planifier pour demain
+  if (currentHour >= 13) {
+    nextRun.setDate(nextRun.getDate() + 1);
+  }
+
+  const timeUntilNext = nextRun.getTime() - now.getTime();
+
+  console.log(`✓ Scheduler started`);
+  console.log(`  - Activity status update: every 10 minutes`);
+  console.log(`  - Activity reminders: every 5 minutes`);
+  console.log(`  - Cleanup expired reminders: every 24 hours`);
+  console.log(`  - Discovery notifications: once daily at 18h`);
+  console.log(`  - Next discovery notifications at: ${nextRun.toLocaleString('fr-FR')}`);
+
+  // Planifier la première exécution
+  setTimeout(() => {
+    runDiscoveryNotifications();
+    
+    // Puis toutes les 24 heures
+    setInterval(() => {
+      runDiscoveryNotifications();
+    }, 24 * 60 * 60 * 1000); // 24 heures
+  }, timeUntilNext);
 }
 
 /**
@@ -93,5 +123,18 @@ async function runCleanupTasks(): Promise<void> {
     console.log(`[${new Date().toISOString()}] Cleanup tasks completed`);
   } catch (error) {
     console.error('Error running cleanup tasks:', error);
+  }
+}
+
+/**
+ * Envoie les notifications de découverte aléatoires
+ */
+async function runDiscoveryNotifications(): Promise<void> {
+  try {
+    console.log(`[${new Date().toISOString()}] Sending discovery notifications...`);
+    await sendDiscoveryNotifications();
+    console.log(`[${new Date().toISOString()}] Discovery notifications sent`);
+  } catch (error) {
+    console.error('Error sending discovery notifications:', error);
   }
 }

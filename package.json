@@ -17,7 +17,8 @@
     "reminders:setup": "node create-reminder-indexes.js",
     "seed:activities": "node seed-activities.js",
     "clean:activities": "node clean-seeded-activities.js",
-    "stats:activities": "node stats-activities.js"
+    "stats:activities": "node stats-activities.js",
+    "cleanup:deleted-accounts": "node cleanup-deleted-accounts.js"
   },
   "dependencies": {
     "@types/ioredis": "^4.28.10",
