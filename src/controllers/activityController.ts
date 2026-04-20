@@ -93,23 +93,20 @@ export const createActivity = async (req: AuthRequest, res: Response): Promise<v
 
 export const getActivities = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { category, tags, maxDistance, ranked, limit = '20', cursor, trackView = 'true' } = req.query;
+    const { category, tags, maxDistance, ranked, limit = '20', page = '1', trackView = 'true' } = req.query;
     
     // Pagination stricte
     const limitNum = Math.min(parseInt(limit as string, 10), 100); // Max 100 par page
+    const pageNum = Math.max(parseInt(page as string, 10), 1);
+    const skip = (pageNum - 1) * limitNum;
     
     // Ne récupérer que les activités à venir et en cours
     const query: any = { 
       status: { $in: ['upcoming', 'ongoing', 'active'] }
     };
 
-    // Pagination avec curseur (plus efficace que skip/limit)
-    if (cursor) {
-      query._id = { $gt: cursor };
-    }
-
     console.log('[getActivities] Query:', JSON.stringify(query));
-    console.log('[getActivities] Current date:', new Date().toISOString());
+    console.log('[getActivities] Page:', pageNum, 'Limit:', limitNum, 'Skip:', skip);
 
     if (category) {
       query.category = category;
@@ -123,7 +120,8 @@ export const getActivities = async (req: AuthRequest, res: Response): Promise<vo
     let activities = await Activity.find(query)
       .populate('createdBy', 'name avatar reputation')
       .populate('participants', 'name avatar')
-      .sort({ _id: 1 }) // Tri par _id pour pagination avec curseur
+      .sort({ createdAt: -1 }) // Tri par date de création décroissante (plus récentes en premier)
+      .skip(skip)
       .limit(limitNum + 1) // +1 pour savoir s'il y a une page suivante
       .lean();
 
@@ -134,11 +132,6 @@ export const getActivities = async (req: AuthRequest, res: Response): Promise<vo
     if (hasNextPage) {
       activities = activities.slice(0, limitNum);
     }
-
-    // Curseur pour la page suivante
-    const nextCursor = hasNextPage && activities.length > 0
-      ? activities[activities.length - 1]._id.toString()
-      : null;
 
     // Filtrer par distance si demandé
     if (maxDistance && req.userId) {
@@ -205,7 +198,7 @@ export const getActivities = async (req: AuthRequest, res: Response): Promise<vo
         res.json({
           activities: rankedActivities.slice(0, limitNum),
           hasNextPage,
-          nextCursor,
+          currentPage: pageNum,
         });
         return;
       }
@@ -214,7 +207,8 @@ export const getActivities = async (req: AuthRequest, res: Response): Promise<vo
     res.json({
       activities,
       hasNextPage,
-      nextCursor,
+      currentPage: pageNum,
+      totalPages: null, // On ne calcule pas le total pour des raisons de performance
     });
   } catch (error) {
     console.error('Get activities error:', error);
