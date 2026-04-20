@@ -33,7 +33,7 @@ app.use(cors({
     'http://localhost:5173', // Admin local
     'http://localhost:3000', // Landing page local
     'https://lokky.akylian.com', // Landing page production
-    'https://lokky-back.onrender.com', // Backend production (pour les requêtes internes)
+    'https://lokky-back-teff.onrender.com', // Backend production (pour les requêtes internes)
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
