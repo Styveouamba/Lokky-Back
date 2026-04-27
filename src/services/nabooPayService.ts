@@ -89,8 +89,8 @@ export const initializePayment = async (
           description: `Abonnement premium ${plan === 'monthly' ? 'mensuel' : 'annuel'} avec essai gratuit de 7 jours`,
         },
       ],
-      success_url: `${APP_URL}subscription/success`,
-      error_url: `${APP_URL}subscription/cancel`,
+      success_url: `${API_URL}/subscription/success?subscriptionId=${subscriptionId}`,
+      error_url: `${API_URL}/subscription/error?subscriptionId=${subscriptionId}`,
       fees_customer_side: false,
       is_escrow: false,
       customer: {

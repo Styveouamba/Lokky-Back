@@ -14,6 +14,7 @@ import achievementRoutes from './routes/achievementRoutes';
 import appRoutes from './routes/appRoutes';
 import subscriptionRoutes from './routes/subscriptionRoutes';
 import webhookRoutes from './routes/webhookRoutes';
+import subscriptionRedirectRoutes from './routes/subscriptionRedirectRoutes';
 import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -49,6 +50,7 @@ app.use('/.well-known', express.static('public/.well-known'));
 
 // Routes
 app.use('/api/webhooks', webhookRoutes); // Register webhooks before body parser
+app.use('/subscription', subscriptionRedirectRoutes); // Subscription redirect pages
 app.use('/api/users', userRoutes);
 app.use('/api/activities', activityRoutes);
 app.use('/api/groups', groupRoutes);
