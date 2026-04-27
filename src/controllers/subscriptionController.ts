@@ -187,11 +187,11 @@ export const getSubscriptionStatus = async (
     // Build features list
     const features = isPremium
       ? [
-          'Activity Boosting',
-          'Photo Gallery',
-          'Profile View Tracking',
-          'Recurring Activities',
-          'Premium Badge',
+          'Mise en avant des activités',
+          'Galerie photo',
+          'Suivi des vues de profil',
+          'Activités récurrentes',
+          'Badge Premium',
         ]
       : [];
 

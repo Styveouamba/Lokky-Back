@@ -18,6 +18,7 @@ interface ActivityScore {
     freshness: number;
     diversity?: number; // Nouveau: bonus/pénalité de diversité
   };
+  premiumBoost?: number; // Boost pour les activités premium
 }
 
 interface RankedActivity extends IActivity {

@@ -118,7 +118,7 @@ export const getActivities = async (req: AuthRequest, res: Response): Promise<vo
     }
 
     let activities = await Activity.find(query)
-      .populate('createdBy', 'name avatar reputation')
+      .populate('createdBy', 'name avatar reputation premium')
       .populate('participants', 'name avatar')
       .sort({ createdAt: -1 }) // Tri par date de création décroissante (plus récentes en premier)
       .skip(skip)
@@ -132,6 +132,19 @@ export const getActivities = async (req: AuthRequest, res: Response): Promise<vo
     if (hasNextPage) {
       activities = activities.slice(0, limitNum);
     }
+
+    // Appliquer le boost premium : trier les activités premium en premier
+    activities = activities.sort((a, b) => {
+      const aIsPremium = (a.createdBy as any)?.premium?.isActive || false;
+      const bIsPremium = (b.createdBy as any)?.premium?.isActive || false;
+      
+      // Les activités premium d'abord
+      if (aIsPremium && !bIsPremium) return -1;
+      if (!aIsPremium && bIsPremium) return 1;
+      
+      // Sinon, garder l'ordre par date de création
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
 
     // Filtrer par distance si demandé
     if (maxDistance && req.userId) {
@@ -163,6 +176,17 @@ export const getActivities = async (req: AuthRequest, res: Response): Promise<vo
           },
           { addRandomness: true, randomnessFactor: 3 } // Ajouter un facteur aléatoire léger
         );
+
+        // 1.5. Appliquer le boost premium (avant la diversité)
+        rankedActivities = rankedActivities.map(activity => {
+          const isPremiumCreator = (activity.createdBy as any)?.premium?.isActive || false;
+          if (isPremiumCreator && activity.rankingScore) {
+            // Boost de 15 points pour les activités premium
+            activity.rankingScore.totalScore += 15;
+            activity.rankingScore.premiumBoost = 15;
+          }
+          return activity;
+        });
 
         // 2. Récupérer l'historique des vues de l'utilisateur
         const viewHistory = await diversityService.getUserViewHistory(req.userId, 30);
@@ -219,7 +243,7 @@ export const getActivities = async (req: AuthRequest, res: Response): Promise<vo
 export const getActivityById = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const activity = await Activity.findById(req.params.id)
-      .populate('createdBy', 'name avatar interests goals reputation')
+      .populate('createdBy', 'name avatar interests goals reputation premium')
       .populate('participants', 'name avatar interests');
 
     if (!activity) {
