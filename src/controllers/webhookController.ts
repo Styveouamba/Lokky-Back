@@ -31,7 +31,7 @@ const processTransaction = async (
   webhookPayload: any,
   res: Response
 ): Promise<void> => {
-  // NabooPay V2 format: transaction_status peut être "completed", "pending", "failed"
+  // NabooPay V2 format: transaction_status peut être "paid", "pending", "failed", "completed"
   const { transaction_status, paid_at } = webhookPayload;
 
   try {
@@ -43,13 +43,15 @@ const processTransaction = async (
     }
 
     // Update transaction
-    transaction.status = transaction_status === 'completed' ? 'completed' : 'failed';
+    // NabooPay utilise "paid" pour les paiements réussis
+    const isSuccess = transaction_status === 'paid' || transaction_status === 'completed';
+    transaction.status = isSuccess ? 'completed' : 'failed';
     transaction.nabooStatus = transaction_status;
     transaction.nabooResponse = webhookPayload;
     transaction.webhookReceived = true;
     transaction.webhookReceivedAt = new Date();
 
-    if (transaction_status !== 'completed') {
+    if (!isSuccess) {
       await transaction.save();
 
       // Update subscription to expired
@@ -70,6 +72,8 @@ const processTransaction = async (
       res.status(200).json({ received: true });
       return;
     }
+
+    console.log('[Webhook] Payment successful, activating subscription...');
 
     await transaction.save();
 

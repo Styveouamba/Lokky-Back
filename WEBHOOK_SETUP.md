@@ -6,7 +6,7 @@
 - ✅ Header de signature: `X-Signature` (au lieu de x-naboo-signature)
 - ✅ Champ status: `transaction_status` (au lieu de status)
 - ✅ Champ ID: `order_id` (au lieu de transaction_id)
-- ✅ Valeurs status: `completed`, `pending`, `failed` (au lieu de success/failed)
+- ✅ Valeurs status: `paid`, `pending`, `failed` (NabooPay utilise "paid" pour succès)
 
 ### 2. Vérification de signature
 - ✅ Utilise HMAC SHA256 avec le secret webhook
