@@ -49,6 +49,11 @@ const BACKEND_URL = process.env.API_URL ||
     ? 'https://lokky-back-teff.onrender.com' 
     : 'http://localhost:3000');
 
+// Deep link scheme - use Expo scheme in development
+const DEEP_LINK_SCHEME = process.env.NODE_ENV === 'production' 
+  ? 'lokky://' 
+  : 'exp://192.168.1.100:8081/--/'; // Remplace par ton IP locale
+
 // Log configuration on startup
 console.log('[NabooPay] Configuration:', {
   apiUrl: NABOO_API_URL,
