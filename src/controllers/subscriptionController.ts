@@ -120,7 +120,7 @@ export const initiatePurchase = async (
     await Transaction.create({
       userId,
       subscriptionId: subscription._id,
-      nabooTransactionId: nabooResponse.transaction_id,
+      nabooTransactionId: nabooResponse.order_id,
       amount,
       currency,
       paymentMethod,
@@ -134,21 +134,23 @@ export const initiatePurchase = async (
     });
 
     // Update subscription with NabooPay transaction ID
-    subscription.nabooTransactionId = nabooResponse.transaction_id;
+    subscription.nabooTransactionId = nabooResponse.order_id;
     await subscription.save();
 
-    console.log('[Subscription] Payment initialized:', nabooResponse.transaction_id);
+    console.log('[Subscription] Payment initialized:', nabooResponse.order_id);
 
     res.status(200).json({
-      paymentUrl: nabooResponse.payment_url,
-      transactionId: nabooResponse.transaction_id,
+      paymentUrl: nabooResponse.checkout_url,
+      transactionId: nabooResponse.order_id,
       subscriptionId: subscription._id,
     });
   } catch (error: any) {
     console.error('[Subscription] Error initiating purchase:', error);
+    console.error('[Subscription] Error stack:', error.stack);
     res.status(500).json({
       message: 'Failed to initiate subscription purchase',
       error: error.message,
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined,
     });
   }
 };

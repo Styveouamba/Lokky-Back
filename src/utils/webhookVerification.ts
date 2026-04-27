@@ -1,51 +1,45 @@
 import crypto from 'crypto';
 
-const NABOO_WEBHOOK_SECRET = process.env.NABOO_WEBHOOK_SECRET;
+const NABOO_WEBHOOK_SECRET = process.env.NABOO_WEBHOOK_SECRET || '';
 
 /**
- * Verifies the webhook signature from NabooPay using HMAC-SHA256
- * @param payload - The raw webhook payload as a string
+ * Verify NabooPay webhook signature using HMAC-SHA256
+ * @param payload - The raw webhook payload as string
  * @param signature - The signature from the webhook header
  * @returns boolean indicating if the signature is valid
  */
-export const verifyWebhookSignature = (
-  payload: string,
-  signature: string
-): boolean => {
+export const verifyWebhookSignature = (payload: string, signature: string): boolean => {
+  if (!NABOO_WEBHOOK_SECRET) {
+    console.error('[Webhook] NABOO_WEBHOOK_SECRET is not configured');
+    return false;
+  }
+
+  if (!signature) {
+    console.error('[Webhook] No signature provided');
+    return false;
+  }
+
   try {
-    if (!NABOO_WEBHOOK_SECRET) {
-      console.error('[WebhookVerification] NABOO_WEBHOOK_SECRET not configured');
-      return false;
-    }
+    // Create HMAC with SHA256
+    const hmac = crypto.createHmac('sha256', NABOO_WEBHOOK_SECRET);
+    hmac.update(payload);
+    const computedSignature = hmac.digest('hex');
 
-    if (!signature) {
-      console.error('[WebhookVerification] No signature provided');
-      return false;
-    }
-
-    console.log('[WebhookVerification] Verifying webhook signature...');
-
-    // Compute HMAC-SHA256 signature
-    const computedSignature = crypto
-      .createHmac('sha256', NABOO_WEBHOOK_SECRET)
-      .update(payload)
-      .digest('hex');
-
-    // Timing-safe comparison to prevent timing attacks
+    // Timing-safe comparison
     const isValid = crypto.timingSafeEqual(
       Buffer.from(signature),
       Buffer.from(computedSignature)
     );
 
-    if (isValid) {
-      console.log('[WebhookVerification] ✅ Signature valid');
-    } else {
-      console.error('[WebhookVerification] ❌ Signature invalid');
+    if (!isValid) {
+      console.warn('[Webhook] Signature mismatch');
+      console.warn('[Webhook] Expected:', computedSignature);
+      console.warn('[Webhook] Received:', signature);
     }
 
     return isValid;
   } catch (error) {
-    console.error('[WebhookVerification] Error verifying signature:', error);
+    console.error('[Webhook] Error verifying signature:', error);
     return false;
   }
 };
