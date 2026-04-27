@@ -16,6 +16,7 @@ import subscriptionRoutes from './routes/subscriptionRoutes';
 import webhookRoutes from './routes/webhookRoutes';
 import subscriptionRedirectRoutes from './routes/subscriptionRedirectRoutes';
 import debugRoutes from './routes/debugRoutes';
+import galleryRoutes from './routes/galleryRoutes';
 import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -64,6 +65,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/achievements', achievementRoutes);
 app.use('/api/app', appRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/gallery', galleryRoutes);
 app.use('/api/debug', debugRoutes); // Debug routes (remove in production)
 
 // Health check
