@@ -12,6 +12,8 @@ import moderationRoutes from './routes/moderationRoutes';
 import adminRoutes from './routes/adminRoutes';
 import achievementRoutes from './routes/achievementRoutes';
 import appRoutes from './routes/appRoutes';
+import subscriptionRoutes from './routes/subscriptionRoutes';
+import webhookRoutes from './routes/webhookRoutes';
 import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
@@ -46,6 +48,7 @@ app.use(express.urlencoded({ extended: true }));
 app.use('/.well-known', express.static('public/.well-known'));
 
 // Routes
+app.use('/api/webhooks', webhookRoutes); // Register webhooks before body parser
 app.use('/api/users', userRoutes);
 app.use('/api/activities', activityRoutes);
 app.use('/api/groups', groupRoutes);
@@ -57,6 +60,7 @@ app.use('/api/moderation', moderationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/achievements', achievementRoutes);
 app.use('/api/app', appRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

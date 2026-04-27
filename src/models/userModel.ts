@@ -50,6 +50,12 @@ export interface IUser extends Document {
     scheduledFor?: Date;
     isDeleted: boolean;
   };
+  premium?: {
+    isActive: boolean;
+    plan: 'monthly' | 'annual' | null;
+    since: Date | null;
+    expiresAt: Date | null;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -223,6 +229,26 @@ const userSchema = new Schema<IUser>(
       isDeleted: {
         type: Boolean,
         default: false,
+      },
+    },
+    premium: {
+      isActive: {
+        type: Boolean,
+        default: false,
+        index: true,
+      },
+      plan: {
+        type: String,
+        enum: ['monthly', 'annual', null],
+        default: null,
+      },
+      since: {
+        type: Date,
+        default: null,
+      },
+      expiresAt: {
+        type: Date,
+        default: null,
       },
     },
   },
