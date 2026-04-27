@@ -174,6 +174,14 @@ export const getSubscriptionStatus = async (
       status: { $in: ['trial', 'active'] },
     });
 
+    console.log('[Subscription] Found subscription:', subscription ? {
+      id: subscription._id,
+      status: subscription.status,
+      plan: subscription.plan,
+      startDate: subscription.startDate,
+      endDate: subscription.endDate,
+    } : 'none');
+
     const isPremium = !!subscription;
 
     // Build features list
