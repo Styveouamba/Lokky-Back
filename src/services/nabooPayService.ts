@@ -41,9 +41,13 @@ interface NabooPaymentResponse {
 const NABOO_API_KEY = process.env.NABOO_API_KEY;
 const NABOO_API_URL = process.env.NABOO_API_URL || 'https://api.naboopay.com';
 const NABOO_SANDBOX_MODE = process.env.NABOO_SANDBOX_MODE === 'true';
-const NABOO_MOCK_MODE = process.env.NABOO_MOCK_MODE === 'true'; // Mode simulation pour tests
-const API_URL = process.env.API_URL || 'http://localhost:3000';
-const APP_URL = process.env.APP_URL || 'lokky://';
+const NABOO_MOCK_MODE = process.env.NABOO_MOCK_MODE === 'true';
+
+// Backend URL - where NabooPay will redirect after payment
+const BACKEND_URL = process.env.API_URL || 
+  (process.env.NODE_ENV === 'production' 
+    ? 'https://lokky-back-teff.onrender.com' 
+    : 'http://localhost:3000');
 
 // Log configuration on startup
 console.log('[NabooPay] Configuration:', {
@@ -52,6 +56,8 @@ console.log('[NabooPay] Configuration:', {
   mockMode: NABOO_MOCK_MODE,
   hasApiKey: !!NABOO_API_KEY,
   apiKeyPrefix: NABOO_API_KEY?.substring(0, 15) + '...',
+  backendUrl: BACKEND_URL,
+  nodeEnv: process.env.NODE_ENV,
 });
 
 export const initializePayment = async (
@@ -89,8 +95,8 @@ export const initializePayment = async (
           description: `Abonnement premium ${plan === 'monthly' ? 'mensuel' : 'annuel'} avec essai gratuit de 7 jours`,
         },
       ],
-      success_url: `${API_URL}/subscription/success?subscriptionId=${subscriptionId}`,
-      error_url: `${API_URL}/subscription/error?subscriptionId=${subscriptionId}`,
+      success_url: `${BACKEND_URL}/subscription/success?subscriptionId=${subscriptionId}`,
+      error_url: `${BACKEND_URL}/subscription/error?subscriptionId=${subscriptionId}`,
       fees_customer_side: false,
       is_escrow: false,
       customer: {
