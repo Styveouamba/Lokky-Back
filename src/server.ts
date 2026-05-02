@@ -9,6 +9,7 @@ import { createIndexes } from './utils/createIndexes';
 import { startScheduler } from './utils/scheduler';
 import { cacheService } from './services/cacheService';
 import { initDefaultAdmin } from './utils/initAdmin';
+import { startRecurringActivityCron } from './jobs/recurringActivityCron';
 
 dotenv.config();
 
@@ -71,6 +72,10 @@ async function startServer() {
       // Démarrer le scheduler pour les tâches planifiées
       startScheduler();
       logger.info('⏰ Scheduler démarré');
+      
+      // Démarrer le cron job pour les activités récurrentes
+      startRecurringActivityCron();
+      logger.info('🔄 Cron job activités récurrentes démarré');
     });
   } catch (error) {
     logger.error('❌ Erreur de démarrage:', error);

@@ -19,6 +19,14 @@ export interface IActivity extends Document {
   imageUrl?: string;
   status: 'upcoming' | 'ongoing' | 'completed' | 'cancelled';
   groupId?: mongoose.Types.ObjectId; // Référence au groupe de discussion
+  isRecurring?: boolean; // Activité récurrente (premium uniquement)
+  recurringPattern?: {
+    frequency: 'weekly'; // Pour l'instant, uniquement hebdomadaire
+    dayOfWeek: number; // 0 = Dimanche, 1 = Lundi, ..., 6 = Samedi
+    time: string; // Format HH:mm (ex: "14:30")
+    endDate?: Date; // Date de fin de la récurrence (optionnel)
+  };
+  parentActivityId?: mongoose.Types.ObjectId; // Si c'est une instance d'une activité récurrente
   createdAt: Date;
   updatedAt: Date;
 }
@@ -93,6 +101,30 @@ const activitySchema = new Schema<IActivity>(
     groupId: {
       type: Schema.Types.ObjectId,
       ref: 'Group',
+    },
+    isRecurring: {
+      type: Boolean,
+      default: false,
+    },
+    recurringPattern: {
+      frequency: {
+        type: String,
+        enum: ['weekly'],
+      },
+      dayOfWeek: {
+        type: Number,
+        min: 0,
+        max: 6,
+      },
+      time: {
+        type: String,
+        match: /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/,
+      },
+      endDate: Date,
+    },
+    parentActivityId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Activity',
     },
   },
   {

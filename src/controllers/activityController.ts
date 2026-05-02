@@ -15,7 +15,19 @@ import { createRemindersForActivity, deleteRemindersForActivity, deleteAllRemind
 
 export const createActivity = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { title, description, category, tags, location, date, maxParticipants, imageUrl, duration } = req.body;
+    const { 
+      title, 
+      description, 
+      category, 
+      tags, 
+      location, 
+      date, 
+      maxParticipants, 
+      imageUrl, 
+      duration,
+      isRecurring,
+      recurringPattern 
+    } = req.body;
 
     // Validation
     if (!title || !category || !location || !date || !maxParticipants) {
@@ -29,6 +41,21 @@ export const createActivity = async (req: AuthRequest, res: Response): Promise<v
       return;
     }
 
+    // Vérifier si l'utilisateur est premium pour les activités récurrentes
+    if (isRecurring) {
+      const user = await User.findById(req.userId);
+      if (!user?.premium?.isActive) {
+        res.status(403).json({ message: 'Les activités récurrentes sont réservées aux membres premium' });
+        return;
+      }
+
+      // Valider le pattern de récurrence
+      if (!recurringPattern || !recurringPattern.dayOfWeek || !recurringPattern.time) {
+        res.status(400).json({ message: 'Pattern de récurrence invalide' });
+        return;
+      }
+    }
+
     // Créer le groupe de discussion pour l'activité
     const group = await Group.create({
       name: title,
@@ -40,26 +67,38 @@ export const createActivity = async (req: AuthRequest, res: Response): Promise<v
       isPrivate: false,
     });
 
-
     // Créer l'activité avec la référence au groupe
-    const activity = await Activity.create({
+    const activityData: any = {
       title,
       description,
       category,
       tags: tags || [],
       location,
       date,
-      duration: duration || 2, // Durée par défaut de 2 heures
+      duration: duration || 2,
       maxParticipants,
       imageUrl,
       createdBy: req.userId,
       participants: [req.userId],
       status: 'upcoming',
       groupId: group._id,
-    });
+    };
+
+    // Ajouter les champs de récurrence si applicable
+    if (isRecurring && recurringPattern) {
+      activityData.isRecurring = true;
+      activityData.recurringPattern = {
+        frequency: 'weekly',
+        dayOfWeek: recurringPattern.dayOfWeek,
+        time: recurringPattern.time,
+        endDate: recurringPattern.endDate,
+      };
+    }
+
+    const activity = await Activity.create(activityData);
 
     const populatedActivity = await Activity.findById(activity._id)
-      .populate('createdBy', 'name avatar reputation')
+      .populate('createdBy', 'name avatar reputation premium')
       .populate('participants', 'name avatar')
       .populate('groupId', 'name avatar');
 
@@ -83,7 +122,7 @@ export const createActivity = async (req: AuthRequest, res: Response): Promise<v
     
     res.status(201).json({
       ...(populatedActivity?.toObject() || {}),
-      newAchievements: achievements, // Envoyer les nouveaux achievements au frontend
+      newAchievements: achievements,
     });
   } catch (error: any) {
     console.error('Create activity error:', error);
