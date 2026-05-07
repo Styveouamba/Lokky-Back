@@ -291,10 +291,14 @@ export const appleAuth = async (req: Request, res: Response): Promise<void> => {
         message: 'Un compte existe déjà avec cet email. Veuillez vous connecter avec votre mot de passe.' 
       });
       return;
-    } else if (!user.appleId) {
-      // Mettre à jour l'appleId si manquant
-      user.appleId = appleId;
-      await user.save();
+    } else {
+      // Utilisateur existant - mettre à jour l'appleId si manquant
+      if (!user.appleId) {
+        user.appleId = appleId;
+        await user.save();
+      }
+      // NE PAS écraser le nom si l'utilisateur existe déjà
+      // Apple ne fournit fullName que lors de la première connexion
     }
 
     // Générer notre propre JWT
