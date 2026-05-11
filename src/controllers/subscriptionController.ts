@@ -44,7 +44,6 @@ export const initiatePurchase = async (
     const { plan, paymentMethod } = req.body;
     const userId = req.userId;
 
-    console.log('[Subscription] Initiating purchase:', { userId, plan, paymentMethod });
 
     // Validate input
     if (!plan || !['monthly', 'annual'].includes(plan)) {
@@ -102,7 +101,6 @@ export const initiatePurchase = async (
       trialEndDate,
     });
 
-    console.log('[Subscription] Created pending subscription:', subscription._id);
 
     // Initialize NabooPay payment
     const nabooResponse = await initializePayment(
@@ -137,7 +135,6 @@ export const initiatePurchase = async (
     subscription.nabooTransactionId = nabooResponse.order_id;
     await subscription.save();
 
-    console.log('[Subscription] Payment initialized:', nabooResponse.order_id);
 
     res.status(200).json({
       paymentUrl: nabooResponse.checkout_url,
@@ -166,7 +163,6 @@ export const getSubscriptionStatus = async (
   try {
     const userId = req.userId;
 
-    console.log('[Subscription] Getting status for user:', userId);
 
     // Find active or trial subscription
     const subscription = await Subscription.findOne({
@@ -174,13 +170,6 @@ export const getSubscriptionStatus = async (
       status: { $in: ['trial', 'active'] },
     });
 
-    console.log('[Subscription] Found subscription:', subscription ? {
-      id: subscription._id,
-      status: subscription.status,
-      plan: subscription.plan,
-      startDate: subscription.startDate,
-      endDate: subscription.endDate,
-    } : 'none');
 
     const isPremium = !!subscription;
 
@@ -235,7 +224,6 @@ export const cancelSubscription = async (
     const userId = req.userId;
     const { reason } = req.body;
 
-    console.log('[Subscription] Cancelling subscription for user:', userId);
 
     // Find active subscription
     const subscription = await Subscription.findOne({
@@ -256,7 +244,6 @@ export const cancelSubscription = async (
     }
     await subscription.save();
 
-    console.log('[Subscription] Subscription cancelled:', subscription._id);
 
     // Send push notification
     await sendPushNotificationToUser(
@@ -293,7 +280,6 @@ export const getSubscriptionHistory = async (
     const page = parseInt(req.query.page as string) || 1;
     const limit = Math.min(parseInt(req.query.limit as string) || 20, 20);
 
-    console.log('[Subscription] Getting history for user:', userId, { page, limit });
 
     // Calculate pagination
     const skip = (page - 1) * limit;

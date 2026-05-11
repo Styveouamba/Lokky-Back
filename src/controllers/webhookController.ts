@@ -17,7 +17,6 @@ const invalidatePremiumCache = async (userId: string): Promise<void> => {
   const cacheKey = `${CACHE_PREFIX}${userId}`;
   try {
     await redis.del(cacheKey);
-    console.log('[Premium] Cache invalidated for user:', userId);
   } catch (error) {
     console.error('[Premium] Failed to invalidate cache:', error);
   }
@@ -37,7 +36,6 @@ const processTransaction = async (
   try {
     // Check if webhook already processed (idempotency)
     if (transaction.webhookReceived) {
-      console.log('[Webhook] Webhook already processed, returning 200 OK');
       res.status(200).json({ received: true, message: 'Already processed' });
       return;
     }
@@ -59,7 +57,6 @@ const processTransaction = async (
         status: 'expired',
       });
 
-      console.log('[Webhook] Payment not completed, status:', transaction_status);
 
       // Send failure notification
       await sendPushNotificationToUser(
@@ -73,7 +70,6 @@ const processTransaction = async (
       return;
     }
 
-    console.log('[Webhook] Payment successful, activating subscription...');
 
     await transaction.save();
 
@@ -89,7 +85,6 @@ const processTransaction = async (
     subscription.startDate = new Date();
     await subscription.save();
 
-    console.log('[Webhook] Subscription activated:', subscription._id);
 
     // Update user premium fields
     await User.findByIdAndUpdate(subscription.userId, {
@@ -110,7 +105,6 @@ const processTransaction = async (
       { type: 'subscription_activated' }
     );
 
-    console.log('[Webhook] ✅ Payment processed successfully');
     res.status(200).json({ received: true });
   } catch (error: any) {
     console.error('[Webhook] Error in processTransaction:', error);
@@ -130,17 +124,10 @@ export const handleNabooPayment = async (
   res: Response
 ): Promise<void> => {
   try {
-    console.log('[Webhook] Received NabooPay webhook');
-    console.log('[Webhook] Headers:', JSON.stringify(req.headers, null, 2));
-    console.log('[Webhook] Body:', JSON.stringify(req.body, null, 2));
+
 
     // Extract signature from X-Signature header (NabooPay standard)
     const signature = req.headers['x-signature'] as string;
-    
-    console.log('[Webhook] Signature found:', signature ? 'Yes' : 'No');
-    if (signature) {
-      console.log('[Webhook] Signature value:', signature);
-    }
     
     // Pour la vérification de signature, utiliser le JSON compact (sans espaces)
     // NabooPay génère la signature avec JSON.stringify(payload) sans espaces
@@ -164,14 +151,10 @@ export const handleNabooPayment = async (
         return;
       }
       
-      console.log('[Webhook] ✅ Signature verified');
     } else {
-      console.log('[Webhook] ⚠️ Skipping signature verification (development mode)');
       if (signature) {
         // En mode dev, tester quand même la signature pour debug
-        console.log('[Webhook] Testing signature in dev mode...');
         const isValid = verifyWebhookSignature(rawBody, signature);
-        console.log('[Webhook] Signature test result:', isValid ? 'Valid' : 'Invalid');
       }
     }
 
@@ -188,15 +171,7 @@ export const handleNabooPayment = async (
       updated_at,
     } = req.body;
 
-    console.log('[Webhook] Processing payment:', {
-      order_id,
-      transaction_status,
-      amount,
-      currency,
-      customer,
-      selected_payment_method,
-      paid_at,
-    });
+
 
     if (!order_id) {
       console.error('[Webhook] No order_id found in webhook payload');
@@ -211,7 +186,6 @@ export const handleNabooPayment = async (
 
     if (!transaction) {
       console.error('[Webhook] Transaction not found:', order_id);
-      console.log('[Webhook] Searching by pending status...');
       
       // Essayer de trouver une transaction pending récente
       const recentTransaction = await Transaction.findOne({
@@ -220,7 +194,6 @@ export const handleNabooPayment = async (
       }).sort({ createdAt: -1 });
       
       if (recentTransaction) {
-        console.log('[Webhook] Found pending transaction by amount:', recentTransaction._id);
         // Mettre à jour le nabooTransactionId
         recentTransaction.nabooTransactionId = order_id;
         await recentTransaction.save();

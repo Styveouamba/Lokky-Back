@@ -23,6 +23,7 @@ import {
   getReputationMetrics,
   getMessageMetrics,
   getAdvancedActivityMetrics,
+  recalculateReputation,
 } from '../controllers/adminController';
 
 const router = express.Router();
@@ -60,6 +61,9 @@ router.delete('/activities/:activityId', deleteActivity);
 router.get('/reports', getReports);
 router.patch('/reports/:reportId/process', processReport);
 
+// Utilitaires
+router.post('/recalculate-reputation', recalculateReputation);
+
 // Test des notifications intelligentes
 router.post('/test/discovery-notifications', async (req, res) => {
   try {
@@ -69,6 +73,18 @@ router.post('/test/discovery-notifications', async (req, res) => {
   } catch (error: any) {
     console.error('Error sending discovery notifications:', error);
     res.status(500).json({ message: 'Error sending notifications', error: error.message });
+  }
+});
+
+// Nettoyer les activités orphelines (dont le créateur a été supprimé)
+router.post('/cleanup/orphan-activities', async (req, res) => {
+  try {
+    const { cleanOrphanActivities } = await import('../scripts/cleanOrphanActivities');
+    await cleanOrphanActivities();
+    res.json({ message: 'Orphan activities cleaned successfully' });
+  } catch (error: any) {
+    console.error('Error cleaning orphan activities:', error);
+    res.status(500).json({ message: 'Error cleaning activities', error: error.message });
   }
 });
 

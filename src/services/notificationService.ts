@@ -153,7 +153,7 @@ export const sendMessageNotification = async (
 ): Promise<boolean> => {
   return await sendPushNotificationToUser(
     userId,
-    `Nouveau message de ${senderName}`,
+    `${senderName}`,
     messageContent,
     {
       type: 'message',
@@ -172,7 +172,7 @@ export const sendAdminWarningNotification = async (
     user: userId,
     type: 'warning',
     title: '⚠️ Avertissement',
-    message: `Vous avez reçu un avertissement : ${reason}`,
+    message: `${reason}`,
     reason,
   });
 
@@ -180,7 +180,7 @@ export const sendAdminWarningNotification = async (
   await sendPushNotificationToUser(
     userId,
     '⚠️ Avertissement',
-    `Vous avez reçu un avertissement : ${reason}`,
+    ` ${reason}`,
     {
       type: 'admin_warning',
       reason,

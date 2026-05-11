@@ -29,11 +29,9 @@ export const checkPremiumStatus = async (
     const cached = await redis.get(cacheKey);
     
     if (cached) {
-      console.log('[Premium] Cache hit for user:', userId);
       return JSON.parse(cached);
     }
 
-    console.log('[Premium] Cache miss for user:', userId);
   } catch (error) {
     console.error('[Premium] Redis error (falling back to database):', error);
   }

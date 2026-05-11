@@ -23,11 +23,6 @@ const app = express();
 
 // Middleware de logging pour toutes les requêtes
 app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-  console.log('Headers:', {
-    authorization: req.headers.authorization ? 'Bearer ***' : 'none',
-    'content-type': req.headers['content-type'],
-  });
   next();
 });
 

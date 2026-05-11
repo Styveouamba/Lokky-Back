@@ -226,7 +226,6 @@ export const updateGroupAvatar = async (req: AuthRequest, res: Response): Promis
     const { groupId } = req.params;
     const { avatar } = req.body;
 
-    console.log('[UpdateGroupAvatar] Request received:', { groupId, avatar, userId: req.userId });
 
     if (!mongoose.Types.ObjectId.isValid(groupId)) {
       console.error('[UpdateGroupAvatar] Invalid group ID:', groupId);
@@ -248,13 +247,11 @@ export const updateGroupAvatar = async (req: AuthRequest, res: Response): Promis
       return;
     }
 
-    console.log('[UpdateGroupAvatar] Updating avatar from', group.avatar, 'to', avatar);
 
     // Mettre à jour l'avatar
     group.avatar = avatar;
     await group.save();
 
-    console.log('[UpdateGroupAvatar] Avatar updated successfully');
 
     // Populate le groupe pour le retour
     const populatedGroup = await Group.findById(group._id)
@@ -266,14 +263,12 @@ export const updateGroupAvatar = async (req: AuthRequest, res: Response): Promis
     try {
       const { getIO } = await import('../socket/socketHandler');
       const io = getIO();
-      console.log('[UpdateGroupAvatar] Emitting group_updated to room:', group._id.toString());
       io.to(group._id.toString()).emit('group_updated', populatedGroup);
     } catch (socketError) {
       console.error('[UpdateGroupAvatar] Socket error (non-blocking):', socketError);
       // Ne pas bloquer la réponse si socket échoue
     }
 
-    console.log('[UpdateGroupAvatar] Sending response');
     res.json(populatedGroup);
   } catch (error) {
     console.error('[UpdateGroupAvatar] Error:', error);
@@ -354,7 +349,6 @@ export const removeMember = async (req: AuthRequest, res: Response): Promise<voi
     const populatedMessage = await Message.findById(systemMessage._id)
       .populate('sender', 'name avatar');
 
-    console.log('[RemoveMember] System message created:', populatedMessage);
 
     // Mettre à jour le lastMessage du groupe
     group.lastMessage = systemMessage.content;
@@ -366,7 +360,6 @@ export const removeMember = async (req: AuthRequest, res: Response): Promise<voi
     const { getIO } = await import('../socket/socketHandler');
     const io = getIO();
     
-    console.log('[RemoveMember] Emitting to room:', group._id.toString());
     io.to(group._id.toString()).emit('new_message', populatedMessage);
     io.to(group._id.toString()).emit('group_updated', group);
 

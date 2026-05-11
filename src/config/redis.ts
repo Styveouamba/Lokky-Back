@@ -35,7 +35,6 @@ redisClient.on('error', (err) => {
 });
 
 redisClient.on('connect', () => {
-  console.log('✅ Redis connected successfully');
 });
 
 redisClient.on('reconnecting', () => {

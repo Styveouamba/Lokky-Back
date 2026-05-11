@@ -144,9 +144,6 @@ export const getActivities = async (req: AuthRequest, res: Response): Promise<vo
       status: { $in: ['upcoming', 'ongoing', 'active'] }
     };
 
-    console.log('[getActivities] Query:', JSON.stringify(query));
-    console.log('[getActivities] Page:', pageNum, 'Limit:', limitNum, 'Skip:', skip);
-
     if (category) {
       query.category = category;
     }
@@ -164,7 +161,8 @@ export const getActivities = async (req: AuthRequest, res: Response): Promise<vo
       .limit(limitNum + 1) // +1 pour savoir s'il y a une page suivante
       .lean();
 
-    console.log('[getActivities] Found activities:', activities.length);
+    // Filtrer les activités dont le créateur a été supprimé
+    activities = activities.filter(activity => activity.createdBy !== null);
 
     // Vérifier s'il y a une page suivante
     const hasNextPage = activities.length > limitNum;
@@ -287,6 +285,12 @@ export const getActivityById = async (req: AuthRequest, res: Response): Promise<
 
     if (!activity) {
       res.status(404).json({ message: 'Activité non trouvée' });
+      return;
+    }
+
+    // Vérifier si le créateur a été supprimé
+    if (!activity.createdBy) {
+      res.status(404).json({ message: 'Cette activité n\'est plus disponible' });
       return;
     }
 
@@ -536,6 +540,12 @@ export const deleteActivity = async (req: AuthRequest, res: Response): Promise<v
 
     await Activity.findByIdAndDelete(req.params.id);
 
+    // Décrémenter le compteur d'activités créées
+    await User.findByIdAndUpdate(
+      req.userId,
+      { $inc: { 'reputation.activitiesCreated': -1 } }
+    );
+
     res.json({ message: 'Activité supprimée avec succès' });
   } catch (error: any) {
     console.error('Delete activity error:', error);
@@ -545,10 +555,13 @@ export const deleteActivity = async (req: AuthRequest, res: Response): Promise<v
 
 export const getMyActivities = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const activities = await Activity.find({ createdBy: req.userId })
+    const allActivities = await Activity.find({ createdBy: req.userId })
       .populate('createdBy', 'name avatar reputation')
       .populate('participants', 'name avatar')
       .sort({ date: 1 });
+
+    // Filtrer les activités dont le créateur a été supprimé (normalement ne devrait pas arriver ici)
+    const activities = allActivities.filter(activity => activity.createdBy !== null);
 
     res.json(activities);
   } catch (error) {
@@ -630,13 +643,16 @@ export const getRecommendedActivities = async (req: AuthRequest, res: Response):
     }
 
     // Récupérer toutes les activités actives (upcoming et ongoing)
-    const activities = await Activity.find({
+    const allActivities = await Activity.find({
       status: { $in: ['upcoming', 'ongoing'] },
       date: { $gte: new Date() }
     })
       .populate('createdBy', 'name avatar reputation')
       .populate('participants', 'name avatar')
       .lean();
+
+    // Filtrer les activités dont le créateur a été supprimé
+    const activities = allActivities.filter(activity => activity.createdBy !== null);
 
     // 1. Appliquer le ranking de base avec randomness
     let rankedActivities = rankingService.rankActivities(
@@ -702,13 +718,16 @@ export const getTrendingActivities = async (req: AuthRequest, res: Response): Pr
     }
 
     // Récupérer toutes les activités actives (upcoming et ongoing)
-    const activities = await Activity.find({
+    const allActivities = await Activity.find({
       status: { $in: ['upcoming', 'ongoing'] },
       date: { $gte: new Date() }
     })
       .populate('createdBy', 'name avatar reputation')
       .populate('participants', 'name avatar')
       .lean();
+
+    // Filtrer les activités dont le créateur a été supprimé
+    const activities = allActivities.filter(activity => activity.createdBy !== null);
 
     // 1. Appliquer le ranking avec randomness
     let rankedActivities = rankingService.rankActivities(

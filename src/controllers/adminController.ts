@@ -131,7 +131,6 @@ export const getActivities = async (req: Request, res: Response) => {
       })
     );
 
-    console.log('📊 Sample formatted activity:', JSON.stringify(formattedActivities[0], null, 2));
 
     res.json(formattedActivities);
   } catch (error) {
@@ -290,15 +289,56 @@ export const deleteActivity = async (req: Request, res: Response) => {
   try {
     const { activityId } = req.params;
 
-    const activity = await Activity.findByIdAndDelete(activityId);
+    const activity = await Activity.findById(activityId);
     if (!activity) {
       return res.status(404).json({ message: 'Activité non trouvée' });
     }
+
+    // Décrémenter le compteur d'activités créées pour le créateur
+    await User.findByIdAndUpdate(
+      activity.createdBy,
+      { $inc: { 'reputation.activitiesCreated': -1 } }
+    );
+
+    await Activity.findByIdAndDelete(activityId);
 
     res.json({ message: 'Activité supprimée avec succès' });
   } catch (error) {
     console.error('Delete activity error:', error);
     res.status(500).json({ message: 'Erreur lors de la suppression de l\'activité' });
+  }
+};
+
+// Recalculer les statistiques de réputation pour un ou tous les utilisateurs
+export const recalculateReputation = async (req: Request, res: Response) => {
+  try {
+    const { userId } = req.query;
+
+    if (userId) {
+      // Recalculer pour un utilisateur spécifique
+      const activitiesCreated = await Activity.countDocuments({ createdBy: userId });
+      await User.findByIdAndUpdate(userId, {
+        'reputation.activitiesCreated': activitiesCreated,
+      });
+      res.json({ message: 'Réputation recalculée avec succès', userId, activitiesCreated });
+    } else {
+      // Recalculer pour tous les utilisateurs
+      const users = await User.find({});
+      let updated = 0;
+
+      for (const user of users) {
+        const activitiesCreated = await Activity.countDocuments({ createdBy: user._id });
+        await User.findByIdAndUpdate(user._id, {
+          'reputation.activitiesCreated': activitiesCreated,
+        });
+        updated++;
+      }
+
+      res.json({ message: `Réputation recalculée pour ${updated} utilisateurs` });
+    }
+  } catch (error) {
+    console.error('Recalculate reputation error:', error);
+    res.status(500).json({ message: 'Erreur lors du recalcul de la réputation' });
   }
 };
 
@@ -573,7 +613,6 @@ export const getTopCities = async (req: Request, res: Response) => {
       { location: 1, name: 1 }
     );
 
-    console.log(`[TopCities] Found ${users.length} users with location`);
 
     // Grouper les utilisateurs par zone géographique (arrondi à 0.5 degré)
     const cityMap = new Map<string, { 
@@ -614,7 +653,6 @@ export const getTopCities = async (req: Request, res: Response) => {
       }
     });
 
-    console.log(`[TopCities] Grouped into ${cityMap.size} zones`);
 
     // Convertir en tableau et trier par nombre d'utilisateurs
     const topZones = Array.from(cityMap.entries())
@@ -656,7 +694,6 @@ export const getTopCities = async (req: Request, res: Response) => {
                            address.country ||
                            `Zone ${zone.key}`;
 
-            console.log(`[TopCities] Geocoded: ${cityName} (${lat}, ${lng})`);
 
             return {
               name: cityName,
@@ -682,7 +719,6 @@ export const getTopCities = async (req: Request, res: Response) => {
       })
     );
 
-    console.log('[TopCities] Final cities:', topCities);
 
     res.json(topCities);
   } catch (error) {
@@ -833,11 +869,9 @@ export const getReputationMetrics = async (req: Request, res: Response) => {
 
     // Vérifier combien de reviews existent
     const totalReviewsCount = await Review.countDocuments();
-    console.log('📊 Total reviews in DB:', totalReviewsCount);
 
     // Afficher quelques reviews pour debug
     const sampleReviews = await Review.find().limit(3).lean();
-    console.log('📊 Sample reviews:', JSON.stringify(sampleReviews, null, 2));
 
     // Top créateurs d'activités (basé sur les activités réelles)
     const topCreators = await Activity.aggregate([
@@ -891,7 +925,6 @@ export const getReputationMetrics = async (req: Request, res: Response) => {
       }
     ]);
 
-    console.log('📊 Top creators with reviews:', JSON.stringify(topCreators[0], null, 2));
 
     // Distribution des notes moyennes (basé sur les reviews réelles)
     const ratingDistribution = await Review.aggregate([
@@ -949,7 +982,6 @@ export const getReputationMetrics = async (req: Request, res: Response) => {
       ])
     ]);
 
-    console.log('📊 Review stats:', reviewStats[0]);
 
     const stats = {
       ...(activityStats[0] || {}),
@@ -1004,7 +1036,6 @@ export const getReputationMetrics = async (req: Request, res: Response) => {
       .limit(10)
       .lean();
 
-    console.log('📊 Recent reviews count:', recentReviews.length);
 
     res.json({
       topCreators,

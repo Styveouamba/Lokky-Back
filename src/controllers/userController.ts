@@ -245,6 +245,7 @@ export const appleAuth = async (req: Request, res: Response): Promise<void> => {
   try {
     const { identityToken, user: appleUser } = req.body;
 
+
     if (!identityToken) {
       res.status(400).json({ message: 'Token Apple manquant' });
       return;
@@ -252,7 +253,7 @@ export const appleAuth = async (req: Request, res: Response): Promise<void> => {
 
     // Décoder le token Apple (JWT)
     const decoded: any = jwt.decode(identityToken);
-    
+
     if (!decoded || !decoded.sub) {
       res.status(400).json({ message: 'Token Apple invalide' });
       return;
@@ -264,6 +265,8 @@ export const appleAuth = async (req: Request, res: Response): Promise<void> => {
     // Si pas d'email, utiliser un email généré
     const userEmail = email || `${appleId}@privaterelay.appleid.com`;
 
+
+
     // Chercher l'utilisateur par appleId ou email
     let user = await User.findOne({
       $or: [
@@ -272,19 +275,38 @@ export const appleAuth = async (req: Request, res: Response): Promise<void> => {
       ]
     });
 
+
     if (!user) {
       // Créer un nouvel utilisateur
-      const name = appleUser?.fullName 
-        ? `${appleUser.fullName.givenName || ''} ${appleUser.fullName.familyName || ''}`.trim()
-        : userEmail.split('@')[0];
+      let name = 'Utilisateur Apple';
+      
+      // Essayer de construire le nom depuis fullName
+      if (appleUser?.fullName) {
+        const givenName = appleUser.fullName.givenName;
+        const familyName = appleUser.fullName.familyName;
+        
+        if (givenName || familyName) {
+          name = `${givenName || ''} ${familyName || ''}`.trim();
+        }
+      }
+      
+      // Si toujours pas de nom, utiliser la partie avant @ de l'email
+      if (name === 'Utilisateur Apple' && userEmail) {
+        const emailName = userEmail.split('@')[0];
+        // Capitaliser la première lettre
+        name = emailName.charAt(0).toUpperCase() + emailName.slice(1);
+      }
+
 
       user = await User.create({
         email: userEmail,
-        name: name || 'Utilisateur Apple',
+        name: name,
         authProvider: 'apple',
         appleId,
         password: '', // Pas de mot de passe pour les utilisateurs Apple
       });
+
+
     } else if (user.authProvider !== 'apple') {
       // L'utilisateur existe déjà avec un autre provider
       res.status(400).json({ 
@@ -553,7 +575,6 @@ export const updatePushToken = async (req: AuthRequest, res: Response): Promise<
         return;
       }
 
-      console.log(`Push token removed for user ${req.userId}`);
 
       res.json({ 
         message: 'Push token supprimé', 
@@ -569,7 +590,6 @@ export const updatePushToken = async (req: AuthRequest, res: Response): Promise<
       { $unset: { pushToken: "" } }
     );
 
-    console.log(`Removed push token from other users before assigning to user ${req.userId}`);
 
     // Ensuite, l'assigner à l'utilisateur actuel
     const user = await User.findByIdAndUpdate(
@@ -583,7 +603,6 @@ export const updatePushToken = async (req: AuthRequest, res: Response): Promise<
       return;
     }
 
-    console.log(`Push token updated for user ${req.userId}`);
 
     res.json({ 
       message: 'Push token mis à jour', 
@@ -764,7 +783,6 @@ export const getLeaderboard = async (req: AuthRequest, res: Response): Promise<v
     const userId = req.userId;
     const limit = 50; // Top 50
 
-    console.log(`[Leaderboard] Fetching ${type} leaderboard for user ${userId}`);
 
     // Essayer de récupérer depuis le cache Redis
     const { rankingCacheService } = await import('../services/rankingCacheService');
@@ -781,7 +799,6 @@ export const getLeaderboard = async (req: AuthRequest, res: Response): Promise<v
     }
     
     if (cached && cached.length > 0) {
-      console.log(`[Leaderboard] Cache hit with ${cached.length} entries`);
       
       // Récupérer les détails des utilisateurs depuis la base de données
       const userIds = cached.map(r => r.userId);
@@ -789,7 +806,6 @@ export const getLeaderboard = async (req: AuthRequest, res: Response): Promise<v
         .select('name avatar reputation')
         .lean();
       
-      console.log(`[Leaderboard] Found ${users.length} users in DB for ${userIds.length} cached IDs`);
       
       // Créer un map pour un accès rapide
       const userMap = new Map(users.map(u => [u._id.toString(), u]));
@@ -799,7 +815,6 @@ export const getLeaderboard = async (req: AuthRequest, res: Response): Promise<v
         .map(r => {
           const user = userMap.get(r.userId);
           if (!user) {
-            console.log(`[Leaderboard] User ${r.userId} not found in DB`);
             return null;
           }
           
@@ -813,11 +828,9 @@ export const getLeaderboard = async (req: AuthRequest, res: Response): Promise<v
         })
         .filter(u => u !== null); // Filtrer les utilisateurs non trouvés
       
-      console.log(`[Leaderboard] Returning ${leaderboard.length} valid users from cache`);
       
       // Si le cache ne retourne aucun utilisateur valide, invalider et refaire la requête
       if (leaderboard.length === 0) {
-        console.log('[Leaderboard] Cache returned no valid users, invalidating and fetching fresh data...');
         await rankingCacheService.invalidateAll();
         // Ne pas retourner, continuer avec la requête normale
       } else {
@@ -836,9 +849,7 @@ export const getLeaderboard = async (req: AuthRequest, res: Response): Promise<v
         });
         return;
       }
-    } else {
-      console.log('[Leaderboard] Cache miss, fetching from DB');
-    }
+    } 
 
     let sortCriteria: any = {};
     let minCriteria: any = {};
@@ -975,7 +986,6 @@ export const getLeaderboard = async (req: AuthRequest, res: Response): Promise<v
     // Mettre en cache le nouveau leaderboard
     await rankingCacheService.cacheLeaderboard(type as string, rankingsData);
 
-    console.log(`[Leaderboard] Returning ${leaderboard.length} users from DB (fresh data)`);
 
     // Trouver le rang de l'utilisateur actuel
     let myRank = null;
@@ -1285,7 +1295,11 @@ export const deleteAccount = async (req: AuthRequest, res: Response): Promise<vo
 
     await user.save();
 
-    console.log(`[DeleteAccount] User ${userId} marked for deletion on ${scheduledDeletionDate}`);
+    // Supprimer TOUTES les activités créées par cet utilisateur (passées, présentes et futures)
+    const Activity = (await import('../models/activityModel')).default;
+    const deletedActivities = await Activity.deleteMany({ createdBy: userId });
+    
+    console.log(`[DeleteAccount] Deleted ${deletedActivities.deletedCount} activities for user ${userId}`);
 
     res.json({
       message: 'Compte marqué pour suppression',
