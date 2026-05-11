@@ -17,7 +17,7 @@ const APP_VERSIONS: Record<string, AppVersion> = {
     minimumVersion: '1.0.0',
     forceUpdate: false,
     releaseNotes: 'Version initiale de Lokky',
-    downloadUrl: 'https://apps.apple.com/sn/app/lokky/id6761419238?l=fr-FR',
+    // downloadUrl retiré temporairement pour éviter les problèmes avec les mises à jour OTA
   },
   android: {
     platform: 'android',
@@ -25,7 +25,7 @@ const APP_VERSIONS: Record<string, AppVersion> = {
     minimumVersion: '1.0.0',
     forceUpdate: false,
     releaseNotes: 'Version initiale de Lokky',
-    downloadUrl: 'https://play.google.com/store/apps/details?id=com.nach17.lokky',
+    // downloadUrl retiré temporairement pour éviter les problèmes avec les mises à jour OTA
   },
 };
 
