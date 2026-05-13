@@ -1,14 +1,17 @@
-import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
 
-// Configuration du transporteur email avec Gmail
-const getEmailTransporter = () => {
-  return nodemailer.createTransport({
-    service: 'gmail',
-    auth: {
-      user: process.env.GMAIL_USER,
-      pass: process.env.GMAIL_APP_PASSWORD,
-    },
-  });
+// Configuration Resend - Lazy initialization pour s'assurer que dotenv est chargé
+let resendInstance: Resend | null = null;
+
+const getResend = (): Resend => {
+  if (!resendInstance) {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+      throw new Error('RESEND_API_KEY is not defined in environment variables');
+    }
+    resendInstance = new Resend(apiKey);
+  }
+  return resendInstance;
 };
 
 export const sendVerificationEmail = async (
@@ -79,19 +82,22 @@ export const sendVerificationEmail = async (
       </html>
     `;
 
-    // Envoyer l'email avec Nodemailer
-    const transporter = getEmailTransporter();
-    const fromEmail = process.env.GMAIL_USER;
-    const fromName = 'Lokky';
-
-    const info = await transporter.sendMail({
-      from: `"${fromName}" <${fromEmail}>`,
+    // Envoyer l'email avec Resend
+    // Pour la production, utilisez un sous-domaine : noreply@mail.akylian.com
+    // Cela évite les conflits avec Zoho Mail sur akylian.com
+    const resend = getResend();
+    const { data, error } = await resend.emails.send({
+      from: process.env.EMAIL_FROM || 'Lokky <onboarding@resend.dev>',
       to: email,
       subject: 'Code de vérification Lokky',
       html: htmlContent,
     });
 
-    console.log('Verification email sent via Gmail:', info.messageId);
+    if (error) {
+      throw error;
+    }
+
+    console.log('Verification email sent via Resend:', data?.id);
   } catch (error) {
     console.error('Error sending verification email:', error);
     throw error;
@@ -166,18 +172,22 @@ export const sendPasswordResetEmail = async (
       </html>
     `;
 
-    const transporter = getEmailTransporter();
-    const fromEmail = process.env.GMAIL_USER;
-    const fromName = 'Lokky';
-
-    const info = await transporter.sendMail({
-      from: `"${fromName}" <${fromEmail}>`,
+    // Envoyer l'email avec Resend
+    // Pour la production, utilisez un sous-domaine : noreply@mail.akylian.com
+    // Cela évite les conflits avec Zoho Mail sur akylian.com
+    const resend = getResend();
+    const { data, error } = await resend.emails.send({
+      from: process.env.EMAIL_FROM || 'Lokky <onboarding@resend.dev>',
       to: email,
       subject: 'Réinitialisation de mot de passe - Lokky',
       html: htmlContent,
     });
 
-    console.log('Password reset email sent via Gmail:', info.messageId);
+    if (error) {
+      throw error;
+    }
+
+    console.log('Password reset email sent via Resend:', data?.id);
   } catch (error) {
     console.error('Error sending password reset email:', error);
     throw error;

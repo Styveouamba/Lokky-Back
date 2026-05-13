@@ -204,6 +204,9 @@ export const setupSocketHandlers = (ioInstance: Server) => {
               (s: any) => s.userId === recipientId.toString()
             );
 
+            console.log(`[Socket] Recipient ${recipientId} in conversation: ${isRecipientInConversation}`);
+            console.log(`[Socket] Connected sockets in room:`, recipientSockets.map((s: any) => s.userId));
+
             // Envoyer la notification seulement si le destinataire n'est PAS dans la conversation
             if (!isRecipientInConversation) {
               const sender = await User.findById(socket.userId);
@@ -216,10 +219,14 @@ export const setupSocketHandlers = (ioInstance: Server) => {
                   content.trim(),
                   conversationId
                 );
+              } else {
+                console.log(`[Socket] Sender not found: ${socket.userId}`);
               }
             } else {
               console.log('[Socket] Recipient is in conversation, skipping notification');
             }
+          } else {
+            console.log('[Socket] No recipient found in conversation');
           }
         } else if (group) {
           // Notification pour groupe

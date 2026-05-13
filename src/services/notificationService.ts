@@ -33,16 +33,18 @@ const getUserPushToken = async (userId: string | mongoose.Types.ObjectId): Promi
     const user = await User.findById(userId).select('pushToken');
     
     if (!user || !user.pushToken) {
+      console.log(`[Notification] User ${userId} has no push token`);
       return null;
     }
 
     // Vérifier que le token est valide
     if (!isExpoPushToken(user.pushToken)) {
-      console.warn(`Invalid push token format for user ${userId}, removing it`);
+      console.warn(`[Notification] Invalid push token format for user ${userId}: ${user.pushToken}, removing it`);
       await removeInvalidPushToken(userId);
       return null;
     }
 
+    console.log(`[Notification] Found valid push token for user ${userId}: ${user.pushToken.substring(0, 20)}...`);
     return user.pushToken;
   } catch (error) {
     console.error(`Error fetching push token for user ${userId}:`, error);
@@ -151,15 +153,21 @@ export const sendMessageNotification = async (
   messageContent: string,
   conversationId: string
 ): Promise<boolean> => {
-  return await sendPushNotificationToUser(
+  console.log(`[Notification] Attempting to send message notification to user ${userId}`);
+  console.log(`[Notification] Title: ${senderName}, Body: ${messageContent}`);
+  
+  const result = await sendPushNotificationToUser(
     userId,
-    `${senderName}`,
+    senderName,
     messageContent,
     {
       type: 'message',
       conversationId,
     }
   );
+  
+  console.log(`[Notification] Send result: ${result}`);
+  return result;
 };
 
 // Notification d'avertissement admin
