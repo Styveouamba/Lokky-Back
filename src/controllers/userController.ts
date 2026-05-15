@@ -255,8 +255,7 @@ export const googleAuth = async (req: Request, res: Response): Promise<void> => 
   } catch (error: any) {
     console.error('Google auth error:', error);
     res.status(500).json({ 
-      message: 'Erreur lors de l\'authentification Google',
-      error: error.message 
+      message: 'Erreur lors de l\'authentification Google'
     });
   }
 };
@@ -362,8 +361,7 @@ export const appleAuth = async (req: Request, res: Response): Promise<void> => {
   } catch (error: any) {
     console.error('Apple auth error:', error);
     res.status(500).json({ 
-      message: 'Erreur lors de l\'authentification Apple',
-      error: error.message 
+      message: 'Erreur lors de l\'authentification Apple'
     });
   }
 };
@@ -503,14 +501,8 @@ export const uploadAvatar = async (req: AuthRequest, res: Response): Promise<voi
     }
     
     console.error('Upload avatar error:', error);
-    console.error('Error details:', {
-      message: error.message,
-      stack: error.stack,
-      name: error.name
-    });
     res.status(500).json({ 
-      message: 'Erreur lors de l\'upload de l\'avatar',
-      error: error.message 
+      message: 'Erreur lors de l\'upload de l\'avatar'
     });
   }
 };
@@ -524,6 +516,15 @@ export const uploadAvatarBase64 = async (req: AuthRequest, res: Response): Promi
     if (!image) {
       console.error('No image data in request');
       res.status(400).json({ message: 'Aucune image fournie' });
+      return;
+    }
+
+    // Vérifier la taille de l'image (max 5MB)
+    const imageSize = Buffer.byteLength(image, 'base64');
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    
+    if (imageSize > maxSize) {
+      res.status(400).json({ message: 'Image trop volumineuse (max 5MB)' });
       return;
     }
 
@@ -559,14 +560,8 @@ export const uploadAvatarBase64 = async (req: AuthRequest, res: Response): Promi
     res.json({ avatarUrl: result, user });
   } catch (error: any) {
     console.error('Upload avatar base64 error:', error);
-    console.error('Error details:', {
-      message: error.message,
-      stack: error.stack,
-      name: error.name
-    });
     res.status(500).json({ 
-      message: 'Erreur lors de l\'upload de l\'avatar',
-      error: error.message 
+      message: 'Erreur lors de l\'upload de l\'avatar'
     });
   }
 };
@@ -1158,8 +1153,7 @@ export const sendPasswordResetCode = async (req: Request, res: Response): Promis
   } catch (error: any) {
     console.error('Send password reset code error:', error);
     res.status(500).json({ 
-      message: 'Erreur lors de l\'envoi du code',
-      error: error.message 
+      message: 'Erreur lors de l\'envoi du code'
     });
   }
 };
@@ -1222,8 +1216,7 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
   } catch (error: any) {
     console.error('Reset password error:', error);
     res.status(500).json({ 
-      message: 'Erreur lors de la réinitialisation du mot de passe',
-      error: error.message 
+      message: 'Erreur lors de la réinitialisation du mot de passe'
     });
   }
 };
@@ -1244,10 +1237,14 @@ export const searchUsers = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
+    // Échapper la query pour éviter les attaques ReDoS et injections NoSQL
+    const { escapeRegex } = await import('../utils/escapeRegex');
+    const escapedQuery = escapeRegex(query);
+
     // Rechercher les utilisateurs par nom (insensible à la casse)
     const users = await User.find({
       _id: { $ne: userId }, // Exclure l'utilisateur actuel
-      name: { $regex: query, $options: 'i' },
+      name: { $regex: escapedQuery, $options: 'i' },
       'moderation.status': { $ne: 'banned' },
     })
       .select('name avatar interests goals reputation')

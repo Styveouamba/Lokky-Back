@@ -24,6 +24,8 @@ import {
   getMessageMetrics,
   getAdvancedActivityMetrics,
   recalculateReputation,
+  sendDiscoveryNotifications,
+  cleanOrphanActivities,
 } from '../controllers/adminController';
 
 const router = express.Router();
@@ -65,27 +67,9 @@ router.patch('/reports/:reportId/process', processReport);
 router.post('/recalculate-reputation', recalculateReputation);
 
 // Test des notifications intelligentes
-router.post('/test/discovery-notifications', async (req, res) => {
-  try {
-    const { sendDiscoveryNotifications } = await import('../services/smartNotificationService');
-    await sendDiscoveryNotifications();
-    res.json({ message: 'Discovery notifications sent successfully' });
-  } catch (error: any) {
-    console.error('Error sending discovery notifications:', error);
-    res.status(500).json({ message: 'Error sending notifications', error: error.message });
-  }
-});
+router.post('/test/discovery-notifications', sendDiscoveryNotifications);
 
 // Nettoyer les activités orphelines (dont le créateur a été supprimé)
-router.post('/cleanup/orphan-activities', async (req, res) => {
-  try {
-    const { cleanOrphanActivities } = await import('../scripts/cleanOrphanActivities');
-    await cleanOrphanActivities();
-    res.json({ message: 'Orphan activities cleaned successfully' });
-  } catch (error: any) {
-    console.error('Error cleaning orphan activities:', error);
-    res.status(500).json({ message: 'Error cleaning activities', error: error.message });
-  }
-});
+router.post('/cleanup/orphan-activities', cleanOrphanActivities);
 
 export default router;

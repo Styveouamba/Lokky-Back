@@ -109,8 +109,7 @@ const processTransaction = async (
   } catch (error: any) {
     console.error('[Webhook] Error in processTransaction:', error);
     res.status(500).json({
-      message: 'Failed to process transaction',
-      error: error.message,
+      message: 'Failed to process transaction'
     });
   }
 };
@@ -209,8 +208,7 @@ export const handleNabooPayment = async (
   } catch (error: any) {
     console.error('[Webhook] Error processing webhook:', error);
     res.status(500).json({
-      message: 'Failed to process webhook',
-      error: error.message,
+      message: 'Failed to process webhook'
     });
   }
 };

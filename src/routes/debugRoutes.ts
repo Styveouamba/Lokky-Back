@@ -47,6 +47,7 @@ router.post('/activate-subscription', authMiddleware, async (req: AuthRequest, r
     });
   } catch (error: any) {
     console.error('[Debug] Error activating subscription:', error);
+    // Note: error.message exposé uniquement en développement (route désactivée en production)
     res.status(500).json({
       message: 'Failed to activate subscription',
       error: error.message,
@@ -71,6 +72,7 @@ router.get('/my-subscriptions', authMiddleware, async (req: AuthRequest, res: Re
     });
   } catch (error: any) {
     console.error('[Debug] Error getting subscriptions:', error);
+    // Note: error.message exposé uniquement en développement (route désactivée en production)
     res.status(500).json({
       message: 'Failed to get subscriptions',
       error: error.message,

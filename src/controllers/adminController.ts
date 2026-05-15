@@ -60,9 +60,13 @@ export const getUsers = async (req: Request, res: Response) => {
 
     const query: any = {};
     if (search) {
+      // Échapper la recherche pour éviter les attaques ReDoS et injections NoSQL
+      const { escapeRegex } = await import('../utils/escapeRegex');
+      const escapedSearch = escapeRegex(search);
+      
       query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
+        { name: { $regex: escapedSearch, $options: 'i' } },
+        { email: { $regex: escapedSearch, $options: 'i' } },
       ];
     }
 
@@ -315,6 +319,13 @@ export const recalculateReputation = async (req: Request, res: Response) => {
     const { userId } = req.query;
 
     if (userId) {
+      // Valider le format de l'userId
+      const mongoose = await import('mongoose');
+      if (!mongoose.default.Types.ObjectId.isValid(userId as string)) {
+        res.status(400).json({ message: 'userId invalide' });
+        return;
+      }
+
       // Recalculer pour un utilisateur spécifique
       const activitiesCreated = await Activity.countDocuments({ createdBy: userId });
       await User.findByIdAndUpdate(userId, {
@@ -908,7 +919,6 @@ export const getReputationMetrics = async (req: Request, res: Response) => {
           _id: '$user._id',
           name: '$user.name',
           avatar: '$user.avatar',
-          email: '$user.email',
           activitiesCreated: 1,
           completedActivities: 1,
           reviews: 1,
@@ -1020,7 +1030,6 @@ export const getReputationMetrics = async (req: Request, res: Response) => {
           _id: '$user._id',
           name: '$user.name',
           avatar: '$user.avatar',
-          email: '$user.email',
           noShowCount: 1,
           attendanceRate: '$user.reputation.attendanceRate'
         }
@@ -1105,7 +1114,6 @@ export const getMessageMetrics = async (req: Request, res: Response) => {
         $project: {
           name: '$user.name',
           avatar: '$user.avatar',
-          email: '$user.email',
           messageCount: 1
         }
       }
@@ -1263,5 +1271,29 @@ export const getAdvancedActivityMetrics = async (req: Request, res: Response) =>
   } catch (error) {
     console.error('Get advanced activity metrics error:', error);
     res.status(500).json({ message: 'Erreur lors de la récupération des métriques avancées' });
+  }
+};
+
+// Envoyer des notifications de découverte
+export const sendDiscoveryNotifications = async (req: Request, res: Response) => {
+  try {
+    const { sendDiscoveryNotifications } = await import('../services/smartNotificationService');
+    await sendDiscoveryNotifications();
+    res.json({ message: 'Discovery notifications sent successfully' });
+  } catch (error: any) {
+    console.error('Error sending discovery notifications:', error);
+    res.status(500).json({ message: 'Error sending notifications' });
+  }
+};
+
+// Nettoyer les activités orphelines
+export const cleanOrphanActivities = async (req: Request, res: Response) => {
+  try {
+    const { cleanOrphanActivities } = await import('../scripts/cleanOrphanActivities');
+    await cleanOrphanActivities();
+    res.json({ message: 'Orphan activities cleaned successfully' });
+  } catch (error: any) {
+    console.error('Error cleaning orphan activities:', error);
+    res.status(500).json({ message: 'Error cleaning activities' });
   }
 };

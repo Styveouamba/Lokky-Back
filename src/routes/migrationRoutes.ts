@@ -46,6 +46,7 @@ router.post('/migrate-activity-status', authMiddleware, async (req: Request, res
     });
   } catch (error) {
     console.error('Migration error:', error);
+    // Note: error.message exposé uniquement en développement (route désactivée en production)
     res.status(500).json({ 
       success: false, 
       message: 'Erreur lors de la migration',

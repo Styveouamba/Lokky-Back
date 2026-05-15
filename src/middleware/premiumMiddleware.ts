@@ -89,8 +89,7 @@ export const requirePremium = async (
   } catch (error: any) {
     console.error('[Premium] Error checking premium status:', error);
     res.status(500).json({
-      message: 'Failed to verify premium status',
-      error: error.message,
+      message: 'Failed to verify premium status'
     });
   }
 };
