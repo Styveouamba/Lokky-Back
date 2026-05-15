@@ -20,7 +20,6 @@ class RankNotificationService {
    * Générer et envoyer les notifications de changement de rang
    */
   async notifyRankChanges(changes: RankChange[]): Promise<void> {
-    console.log(`[RankNotification] Processing ${changes.length} rank changes`);
 
     for (const change of changes) {
       try {
@@ -121,7 +120,6 @@ class RankNotificationService {
       const user = await User.findById(notification.userId).select('pushToken');
       
       if (!user) {
-        console.log(`[RankNotification] User ${notification.userId} not found`);
         return;
       }
 
@@ -136,7 +134,6 @@ class RankNotificationService {
           data: notification.data,
         });
         
-        console.log(`[RankNotification] Sent socket notification to user ${notification.userId}`);
       } catch (socketError) {
         console.log(`[RankNotification] Socket not available or user not connected:`, socketError);
       }
@@ -149,7 +146,6 @@ class RankNotificationService {
           notification.body,
           notification.data
         );
-        console.log(`[RankNotification] Sent push notification to user ${notification.userId}: ${notification.title}`);
       } else {
         console.log(`[RankNotification] No push token for user ${notification.userId}`);
       }

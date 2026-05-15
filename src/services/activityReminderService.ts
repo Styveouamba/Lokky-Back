@@ -43,7 +43,6 @@ export const createRemindersForActivity = async (
         },
         { upsert: true, new: true }
       );
-      console.log(`Created 24h reminder for activity ${activityId}, user ${userId}`);
     }
 
     // Créer le rappel 2h si la date n'est pas dépassée
@@ -63,7 +62,6 @@ export const createRemindersForActivity = async (
         },
         { upsert: true, new: true }
       );
-      console.log(`Created 2h reminder for activity ${activityId}, user ${userId}`);
     }
   } catch (error) {
     console.error('Error creating reminders:', error);
@@ -83,7 +81,6 @@ export const deleteRemindersForActivity = async (
       activityId,
       userId,
     });
-    console.log(`Deleted reminders for activity ${activityId}, user ${userId}`);
   } catch (error) {
     console.error('Error deleting reminders:', error);
   }
@@ -98,7 +95,6 @@ export const deleteAllRemindersForActivity = async (
 ): Promise<void> => {
   try {
     await ActivityReminder.deleteMany({ activityId });
-    console.log(`Deleted all reminders for activity ${activityId}`);
   } catch (error) {
     console.error('Error deleting all reminders:', error);
   }
@@ -142,7 +138,6 @@ export const sendPendingReminders = async (): Promise<void> => {
       .populate('userId', 'pushToken')
       .limit(100); // Limiter à 100 par batch pour éviter la surcharge
 
-    console.log(`[ActivityReminder] Found ${pendingReminders.length} pending reminders to send`);
 
     for (const reminder of pendingReminders) {
       try {
@@ -193,7 +188,6 @@ export const sendPendingReminders = async (): Promise<void> => {
           error: sent ? undefined : 'Failed to send notification',
         });
 
-        console.log(`Sent ${reminder.reminderType} reminder for activity ${activity._id} to user ${user._id}`);
       } catch (error: any) {
         console.error(`Error sending reminder ${reminder._id}:`, error);
         
@@ -204,10 +198,6 @@ export const sendPendingReminders = async (): Promise<void> => {
           error: error.message || 'Unknown error',
         });
       }
-    }
-
-    if (pendingReminders.length > 0) {
-      console.log(`[ActivityReminder] Sent ${pendingReminders.length} reminders`);
     }
   } catch (error) {
     console.error('Error in sendPendingReminders:', error);
@@ -235,7 +225,6 @@ export const createRemindersForAllParticipants = async (
       await createRemindersForActivity(activityId, participant._id);
     }
 
-    console.log(`Created reminders for ${participants.length} participants of activity ${activityId}`);
   } catch (error) {
     console.error('Error creating reminders for all participants:', error);
   }
@@ -254,9 +243,6 @@ export const cleanupExpiredReminders = async (): Promise<void> => {
       scheduledFor: { $lt: oneDayAgo },
     });
 
-    if (result.deletedCount > 0) {
-      console.log(`[ActivityReminder] Cleaned up ${result.deletedCount} expired reminders`);
-    }
   } catch (error) {
     console.error('Error cleaning up expired reminders:', error);
   }

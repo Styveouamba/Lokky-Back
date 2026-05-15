@@ -54,16 +54,7 @@ const DEEP_LINK_SCHEME = process.env.NODE_ENV === 'production'
   ? 'lokky://' 
   : 'exp://192.168.1.100:8081/--/'; // Remplace par ton IP locale
 
-// Log configuration on startup
-console.log('[NabooPay] Configuration:', {
-  apiUrl: NABOO_API_URL,
-  sandboxMode: NABOO_SANDBOX_MODE,
-  mockMode: NABOO_MOCK_MODE,
-  hasApiKey: !!NABOO_API_KEY,
-  apiKeyPrefix: NABOO_API_KEY?.substring(0, 15) + '...',
-  backendUrl: BACKEND_URL,
-  nodeEnv: process.env.NODE_ENV,
-});
+
 
 export const initializePayment = async (
   amount: number,
@@ -76,14 +67,7 @@ export const initializePayment = async (
   plan: string
 ): Promise<NabooPaymentResponse> => {
   try {
-    console.log('[NabooPay] Initializing payment:', {
-      amount,
-      currency,
-      paymentMethod,
-      subscriptionId,
-      plan,
-      sandboxMode: NABOO_SANDBOX_MODE,
-    });
+
 
     // Split customer name into first and last name
     const nameParts = customerName.split(' ');
@@ -116,7 +100,6 @@ export const initializePayment = async (
       },
     };
 
-    console.log('[NabooPay] Request payload:', JSON.stringify(payload, null, 2));
 
     const response = await axios.post(
       `${NABOO_API_URL}/api/v2/transactions`,
@@ -130,11 +113,6 @@ export const initializePayment = async (
       }
     );
 
-    console.log('[NabooPay] Payment initialized successfully:', {
-      orderId: response.data.order_id,
-      status: response.data.transaction_status,
-      checkoutUrl: response.data.checkout_url,
-    });
 
     return {
       order_id: response.data.order_id,
@@ -156,12 +134,6 @@ export const initializePayment = async (
         data: axiosError.response?.data,
         message: axiosError.message,
       });
-
-      // Retry logic for network errors
-      if (axiosError.code === 'ECONNABORTED' || axiosError.code === 'ETIMEDOUT') {
-        console.log('[NabooPay] Retrying payment initialization...');
-        // Implement exponential backoff retry here if needed
-      }
 
       throw new Error(
         `NabooPay API error: ${JSON.stringify(axiosError.response?.data) || axiosError.message}`

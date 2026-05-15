@@ -51,7 +51,6 @@ export const checkPremiumStatus = async (
   // Cache the result
   try {
     await redis.setex(cacheKey, CACHE_TTL, JSON.stringify(status));
-    console.log('[Premium] Cached status for user:', userId);
   } catch (error) {
     console.error('[Premium] Failed to cache status:', error);
   }
@@ -75,12 +74,10 @@ export const requirePremium = async (
       return;
     }
 
-    console.log('[Premium] Checking premium access for user:', userId);
 
     const status = await checkPremiumStatus(userId);
 
     if (!status.isPremium) {
-      console.log('[Premium] ❌ Access denied - user is not premium');
       res.status(403).json({
         message: 'Premium subscription required to access this feature',
         isPremium: false,
@@ -88,7 +85,6 @@ export const requirePremium = async (
       return;
     }
 
-    console.log('[Premium] ✅ Access granted - user is premium');
     next();
   } catch (error: any) {
     console.error('[Premium] Error checking premium status:', error);
@@ -107,7 +103,6 @@ export const invalidatePremiumCache = async (userId: string): Promise<void> => {
 
   try {
     await redis.del(cacheKey);
-    console.log('[Premium] Cache invalidated for user:', userId);
   } catch (error) {
     console.error('[Premium] Failed to invalidate cache:', error);
   }

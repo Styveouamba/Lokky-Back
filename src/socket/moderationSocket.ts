@@ -8,7 +8,6 @@ export const emitUserBanned = (userId: string, reason: string) => {
       reason,
       timestamp: new Date(),
     });
-    console.log(`[Socket] Emitted user_banned to user ${userId}`);
   } catch (error) {
     console.error('Error emitting user_banned:', error);
   }
@@ -23,7 +22,6 @@ export const emitUserSuspended = (userId: string, reason: string, suspendedUntil
       suspendedUntil,
       timestamp: new Date(),
     });
-    console.log(`[Socket] Emitted user_suspended to user ${userId}`);
   } catch (error) {
     console.error('Error emitting user_suspended:', error);
   }
@@ -36,7 +34,6 @@ export const emitUserReactivated = (userId: string) => {
     io.to(userId).emit('user_reactivated', {
       timestamp: new Date(),
     });
-    console.log(`[Socket] Emitted user_reactivated to user ${userId}`);
   } catch (error) {
     console.error('Error emitting user_reactivated:', error);
   }
@@ -51,7 +48,6 @@ export const emitUserWarned = (userId: string, reason: string, warningCount: num
       warningCount,
       timestamp: new Date(),
     });
-    console.log(`[Socket] Emitted user_warned to user ${userId}`);
   } catch (error) {
     console.error('Error emitting user_warned:', error);
   }

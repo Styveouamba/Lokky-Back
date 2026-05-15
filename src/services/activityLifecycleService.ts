@@ -51,7 +51,6 @@ export async function updateActivityStatus(activityId: string): Promise<IActivit
           status: newStatus,
           oldStatus,
         });
-        console.log(`Notified status change for activity ${activityId}: ${oldStatus} -> ${newStatus}`);
       } catch (error) {
         console.error('Error notifying status change:', error);
       }
@@ -83,7 +82,6 @@ export async function updateAllActivityStatuses(): Promise<void> {
       await updateActivityStatus(activity._id.toString());
     }
 
-    console.log(`Updated ${activities.length} activity statuses`);
   } catch (error) {
     console.error('Error updating all activity statuses:', error);
   }
@@ -112,7 +110,6 @@ async function notifyActivityCompleted(activity: IActivity): Promise<void> {
       { upsert: true, new: true }
     );
 
-    console.log(`Scheduled completion notification for activity ${activity._id} at ${notificationTime.toISOString()}`);
   } catch (error) {
     console.error('Error scheduling activity completion notification:', error);
   }
@@ -130,7 +127,6 @@ async function sendCompletionNotifications(activity: IActivity): Promise<void> {
     });
 
     if (participants.length === 0) {
-      console.log(`No participants with push tokens for activity ${activity._id}`);
       return;
     }
 
@@ -152,7 +148,6 @@ async function sendCompletionNotifications(activity: IActivity): Promise<void> {
     );
 
     await Promise.all(notificationPromises);
-    console.log(`Sent ${participants.length} completion notifications for activity ${activity._id}`);
   } catch (error) {
     console.error('Error sending completion notifications:', error);
   }
@@ -176,7 +171,6 @@ export async function processScheduledNotifications(): Promise<void> {
       return;
     }
 
-    console.log(`Processing ${pendingNotifications.length} scheduled notifications`);
 
     for (const notification of pendingNotifications) {
       try {
@@ -205,7 +199,6 @@ export async function processScheduledNotifications(): Promise<void> {
       }
     }
 
-    console.log(`Processed ${pendingNotifications.length} scheduled notifications`);
   } catch (error) {
     console.error('Error processing scheduled notifications:', error);
   }

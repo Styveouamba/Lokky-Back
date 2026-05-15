@@ -41,12 +41,10 @@ export const setupSocketHandlers = (ioInstance: Server) => {
   });
 
   io.on('connection', (socket: AuthenticatedSocket) => {
-    console.log(`[Socket] User ${socket.userId} connected`);
 
     // Rejoindre la room personnelle de l'utilisateur pour les notifications de modération
     if (socket.userId) {
       socket.join(socket.userId);
-      console.log(`[Socket] User ${socket.userId} joined personal room`);
     }
 
     // Rejoindre les rooms des conversations de l'utilisateur
@@ -62,9 +60,7 @@ export const setupSocketHandlers = (ioInstance: Server) => {
         
         if (hasAccess) {
           socket.join(conversationId);
-        } else {
-          console.log(`User ${socket.userId} denied access to ${conversationId}`);
-        }
+        } 
       } catch (error) {
         console.error('Join conversation error:', error);
       }
@@ -204,29 +200,20 @@ export const setupSocketHandlers = (ioInstance: Server) => {
               (s: any) => s.userId === recipientId.toString()
             );
 
-            console.log(`[Socket] Recipient ${recipientId} in conversation: ${isRecipientInConversation}`);
-            console.log(`[Socket] Connected sockets in room:`, recipientSockets.map((s: any) => s.userId));
 
             // Envoyer la notification seulement si le destinataire n'est PAS dans la conversation
             if (!isRecipientInConversation) {
               const sender = await User.findById(socket.userId);
               
               if (sender) {
-                console.log(`[Socket] Sending push notification to user ${recipientId}`);
                 await sendMessageNotification(
                   recipientId,
                   sender.name,
                   content.trim(),
                   conversationId
                 );
-              } else {
-                console.log(`[Socket] Sender not found: ${socket.userId}`);
-              }
-            } else {
-              console.log('[Socket] Recipient is in conversation, skipping notification');
-            }
-          } else {
-            console.log('[Socket] No recipient found in conversation');
+              } 
+            } 
           }
         } else if (group) {
           // Notification pour groupe
@@ -248,7 +235,6 @@ export const setupSocketHandlers = (ioInstance: Server) => {
               
               // Ne pas envoyer si le membre est actuellement dans la conversation
               if (!connectedUserIds.includes(memberIdString)) {
-                console.log(`[Socket] Sending group push notification to user ${memberIdString}`);
                 
                 // Format du message : "[Nom du groupe] Nom: Message"
                 const notificationTitle = group.name || 'Groupe';

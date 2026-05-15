@@ -23,7 +23,6 @@ export const generateNextRecurringInstance = async (parentActivity: any): Promis
 
     // Vérifier si on a dépassé la date de fin
     if (endDate && nextDate > new Date(endDate)) {
-      console.log(`[RecurringActivity] End date reached for activity ${parentActivity._id}`);
       return;
     }
 
@@ -37,7 +36,6 @@ export const generateNextRecurringInstance = async (parentActivity: any): Promis
     });
 
     if (existingInstance) {
-      console.log(`[RecurringActivity] Instance already exists for ${nextDate}`);
       return;
     }
 
@@ -71,7 +69,6 @@ export const generateNextRecurringInstance = async (parentActivity: any): Promis
       isRecurring: false, // Les instances ne sont pas récurrentes
     });
 
-    console.log(`[RecurringActivity] Created new instance ${newInstance._id} for ${nextDate}`);
 
     // Notifier le créateur
     await sendPushNotificationToUser(
@@ -118,7 +115,6 @@ function getNextOccurrence(dayOfWeek: number, time: string, fromDate: Date): Dat
  */
 export const generateAllRecurringInstances = async (): Promise<void> => {
   try {
-    console.log('[RecurringActivity] Starting daily generation...');
 
     // Trouver toutes les activités récurrentes actives
     const recurringActivities = await Activity.find({
@@ -126,7 +122,6 @@ export const generateAllRecurringInstances = async (): Promise<void> => {
       status: { $in: ['upcoming', 'active'] },
     }).populate('createdBy', 'name email premium');
 
-    console.log(`[RecurringActivity] Found ${recurringActivities.length} recurring activities`);
 
     // Vérifier que le créateur est toujours premium
     const activeRecurringActivities = recurringActivities.filter(activity => {
@@ -134,14 +129,12 @@ export const generateAllRecurringInstances = async (): Promise<void> => {
       return creator?.premium?.isActive;
     });
 
-    console.log(`[RecurringActivity] ${activeRecurringActivities.length} with active premium creators`);
 
     // Générer les instances pour les 2 prochaines semaines
     for (const activity of activeRecurringActivities) {
       await generateNextRecurringInstance(activity);
     }
 
-    console.log('[RecurringActivity] Daily generation completed');
   } catch (error) {
     console.error('[RecurringActivity] Error in daily generation:', error);
   }
@@ -165,7 +158,6 @@ export const cancelRecurringActivity = async (parentActivityId: string): Promise
       await instance.save();
     }
 
-    console.log(`[RecurringActivity] Cancelled ${futureInstances.length} future instances`);
   } catch (error) {
     console.error('[RecurringActivity] Error cancelling instances:', error);
   }

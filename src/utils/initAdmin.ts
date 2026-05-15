@@ -7,7 +7,6 @@ export const initDefaultAdmin = async () => {
     const existingAdmin = await User.findOne({ role: 'admin' });
 
     if (existingAdmin) {
-      console.log('✅ Admin user already exists');
       return;
     }
 
@@ -35,10 +34,6 @@ export const initDefaultAdmin = async () => {
       },
     });
 
-    console.log('✅ Default admin user created successfully');
-    console.log(`📧 Email: ${adminEmail}`);
-    console.log(`🔑 Password: ${adminPassword}`);
-    console.log('⚠️  Please change the default password after first login!');
   } catch (error) {
     console.error('❌ Error creating default admin:', error);
   }

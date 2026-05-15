@@ -87,9 +87,6 @@ export const notifyNearbyUsersForNewActivity = async (
       interests: { $exists: true, $ne: [] }, // Seulement ceux avec des intérêts
     }).select('_id name interests location pushToken');
 
-    console.log(
-      `[SmartNotification] Found ${nearbyUsers.length} nearby users for activity ${activityId}`
-    );
 
     let notificationsSent = 0;
 
@@ -134,9 +131,6 @@ export const notifyNearbyUsersForNewActivity = async (
       }
     }
 
-    console.log(
-      `[SmartNotification] Sent ${notificationsSent} notifications for activity ${activityId}`
-    );
   } catch (error) {
     console.error('Error notifying nearby users:', error);
   }
@@ -215,9 +209,6 @@ export const notifyPopularActivityFilling = async (
       }
     }
 
-    console.log(
-      `[SmartNotification] Sent ${notificationsSent} popular activity notifications`
-    );
   } catch (error) {
     console.error('Error notifying popular activity:', error);
   }
@@ -228,7 +219,6 @@ export const notifyPopularActivityFilling = async (
  */
 export const sendDiscoveryNotifications = async (): Promise<void> => {
   try {
-    console.log('[SmartNotification] Starting discovery notifications...');
 
     // Récupérer tous les utilisateurs actifs avec push token
     const users = await User.find({
@@ -238,16 +228,11 @@ export const sendDiscoveryNotifications = async (): Promise<void> => {
       'moderation.status': 'active',
     }).select('_id interests location reputation');
 
-    console.log(`[SmartNotification] Found ${users.length} eligible users`);
 
     // Sélectionner aléatoirement 20% des utilisateurs (pour ne pas spammer)
     const selectedUsers = users
       .sort(() => Math.random() - 0.5)
       .slice(0, Math.ceil(users.length * 0.2));
-
-    console.log(
-      `[SmartNotification] Selected ${selectedUsers.length} users for discovery notifications`
-    );
 
     let notificationsSent = 0;
 
@@ -273,9 +258,6 @@ export const sendDiscoveryNotifications = async (): Promise<void> => {
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
 
-    console.log(
-      `[SmartNotification] Sent ${notificationsSent} discovery notifications`
-    );
   } catch (error) {
     console.error('Error sending discovery notifications:', error);
   }

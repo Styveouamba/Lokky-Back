@@ -97,7 +97,6 @@ export const sendVerificationEmail = async (
       throw error;
     }
 
-    console.log('Verification email sent via Resend:', data?.id);
   } catch (error) {
     console.error('Error sending verification email:', error);
     throw error;
@@ -187,7 +186,6 @@ export const sendPasswordResetEmail = async (
       throw error;
     }
 
-    console.log('Password reset email sent via Resend:', data?.id);
   } catch (error) {
     console.error('Error sending password reset email:', error);
     throw error;

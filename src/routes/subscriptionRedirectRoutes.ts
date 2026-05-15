@@ -9,7 +9,6 @@ const router = express.Router();
 router.get('/success', (req: Request, res: Response) => {
   const { subscriptionId } = req.query;
   
-  console.log('[Subscription] Payment success redirect:', subscriptionId);
   
   // Redirect to mobile app with deep link
   const deepLink = `lokky://subscription/success?subscriptionId=${subscriptionId}`;
@@ -91,7 +90,6 @@ router.get('/success', (req: Request, res: Response) => {
 router.get('/error', (req: Request, res: Response) => {
   const { subscriptionId } = req.query;
   
-  console.log('[Subscription] Payment error redirect:', subscriptionId);
   
   // Redirect to mobile app with deep link
   const deepLink = `lokky://subscription/error?subscriptionId=${subscriptionId}`;

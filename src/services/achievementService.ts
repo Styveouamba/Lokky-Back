@@ -76,7 +76,6 @@ export const checkAndAwardAchievement = async (
       seen: false,
     });
 
-    console.log(`🏆 Achievement awarded: ${achievementType} to user ${userId}`);
 
     return { awarded: true, achievement };
   } catch (error) {

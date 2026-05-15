@@ -18,7 +18,6 @@ const isExpoPushToken = (token: string): boolean => {
 const removeInvalidPushToken = async (userId: string | mongoose.Types.ObjectId): Promise<void> => {
   try {
     await User.findByIdAndUpdate(userId, { $unset: { pushToken: "" } });
-    console.log(`Removed invalid push token for user ${userId}`);
   } catch (error) {
     console.error(`Error removing push token for user ${userId}:`, error);
   }
@@ -33,7 +32,6 @@ const getUserPushToken = async (userId: string | mongoose.Types.ObjectId): Promi
     const user = await User.findById(userId).select('pushToken');
     
     if (!user || !user.pushToken) {
-      console.log(`[Notification] User ${userId} has no push token`);
       return null;
     }
 
@@ -44,7 +42,6 @@ const getUserPushToken = async (userId: string | mongoose.Types.ObjectId): Promi
       return null;
     }
 
-    console.log(`[Notification] Found valid push token for user ${userId}: ${user.pushToken.substring(0, 20)}...`);
     return user.pushToken;
   } catch (error) {
     console.error(`Error fetching push token for user ${userId}:`, error);
@@ -100,7 +97,6 @@ export const sendPushNotification = async (
       
       // Si le token est invalide, le supprimer de la base de données
       if (result.data?.error === 'DeviceNotRegistered' && userId) {
-        console.log(`Token ${pushToken} is no longer valid, removing from user ${userId}`);
         await removeInvalidPushToken(userId);
       }
       return false;
@@ -112,13 +108,11 @@ export const sendPushNotification = async (
       
       // Si le token n'est plus enregistré, le supprimer
       if (result.data.details?.error === 'DeviceNotRegistered' && userId) {
-        console.log(`Token ${pushToken} is no longer registered, removing from user ${userId}`);
         await removeInvalidPushToken(userId);
       }
       return false;
     }
 
-    console.log('Push notification sent successfully:', result);
     return true;
 
   } catch (error) {
@@ -140,7 +134,6 @@ export const sendPushNotificationToUser = async (
   const pushToken = await getUserPushToken(userId);
   
   if (!pushToken) {
-    console.log(`User ${userId} has no valid push token, skipping notification`);
     return false;
   }
 
@@ -153,8 +146,6 @@ export const sendMessageNotification = async (
   messageContent: string,
   conversationId: string
 ): Promise<boolean> => {
-  console.log(`[Notification] Attempting to send message notification to user ${userId}`);
-  console.log(`[Notification] Title: ${senderName}, Body: ${messageContent}`);
   
   const result = await sendPushNotificationToUser(
     userId,
@@ -166,7 +157,6 @@ export const sendMessageNotification = async (
     }
   );
   
-  console.log(`[Notification] Send result: ${result}`);
   return result;
 };
 

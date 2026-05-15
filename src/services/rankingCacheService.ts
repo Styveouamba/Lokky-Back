@@ -15,7 +15,6 @@ redis.on('error', (err) => {
 });
 
 redis.on('connect', () => {
-  console.log('✅ Redis connected successfully');
 });
 
 interface RankingData {
@@ -46,7 +45,6 @@ class RankingCacheService {
     try {
       const key = `leaderboard:${category}`;
       await redis.setex(key, this.CACHE_TTL, JSON.stringify(rankings));
-      console.log(`[RankingCache] Cached ${category} leaderboard with ${rankings.length} entries`);
     } catch (error) {
       console.error('[RankingCache] Error caching leaderboard:', error);
     }
@@ -61,11 +59,9 @@ class RankingCacheService {
       const cached = await redis.get(key);
       
       if (cached) {
-        console.log(`[RankingCache] Cache hit for ${category}`);
         return JSON.parse(cached);
       }
       
-      console.log(`[RankingCache] Cache miss for ${category}`);
       return null;
     } catch (error) {
       console.error('[RankingCache] Error getting leaderboard (Redis might not be running):', error);
@@ -195,10 +191,7 @@ class RankingCacheService {
           
           // Marquer la notification comme envoyée
           await this.markNotificationSent(ranking.userId, category, ranking.rank);
-          console.log(`[RankingCache] Will notify user ${ranking.userId} for rank ${ranking.rank} in ${category}`);
-        } else {
-          console.log(`[RankingCache] Notification already sent for user ${ranking.userId} rank ${ranking.rank} in ${category}`);
-        }
+        } 
       }
 
       // Sauvegarder le nouveau rang
@@ -215,7 +208,6 @@ class RankingCacheService {
     try {
       // Invalider tous les leaderboards car une activité peut affecter plusieurs classements
       await redis.del('leaderboard:creators', 'leaderboard:ratings', 'leaderboard:activities');
-      console.log(`[RankingCache] Invalidated cache for activity ${activityId}`);
     } catch (error) {
       console.error('[RankingCache] Error invalidating cache:', error);
     }
@@ -229,7 +221,6 @@ class RankingCacheService {
       const keys = await redis.keys('leaderboard:*');
       if (keys.length > 0) {
         await redis.del(...keys);
-        console.log(`[RankingCache] Invalidated ${keys.length} cache entries`);
       }
     } catch (error) {
       console.error('[RankingCache] Error invalidating all cache:', error);
@@ -245,7 +236,6 @@ class RankingCacheService {
     
     for (const category of categories) {
       try {
-        console.log(`[RankingCache] Precomputing ${category} rankings...`);
         
         // Importer les modèles nécessaires
         const User = (await import('../models/userModel')).default;
@@ -314,7 +304,6 @@ class RankingCacheService {
         // Mettre en cache
         await this.cacheLeaderboard(category, rankingsData);
         
-        console.log(`[RankingCache] Precomputed ${category} with ${rankingsData.length} users`);
       } catch (error) {
         console.error(`[RankingCache] Error precomputing ${category}:`, error);
       }
