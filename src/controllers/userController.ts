@@ -28,44 +28,77 @@ const generateVerificationCode = (): string => {
 
 // Envoyer un code de vérification
 export const sendVerificationCode = async (req: Request, res: Response): Promise<void> => {
+  const startTime = Date.now();
+  console.log('📧 [REGISTER] Début de l\'envoi du code de vérification');
+  
   try {
     const { email, name } = req.body;
+    console.log(`📧 [REGISTER] Email: ${email}, Nom: ${name}`);
 
     if (!email || !name) {
+      console.log('❌ [REGISTER] Email ou nom manquant');
       res.status(400).json({ message: 'Email et nom requis' });
       return;
     }
 
     // Vérifier si l'email existe déjà
+    console.log('🔍 [REGISTER] Vérification de l\'existence de l\'email...');
     const existingUser = await User.findOne({ email });
     if (existingUser) {
+      console.log('❌ [REGISTER] Email déjà utilisé');
       res.status(400).json({ message: 'Cet email est déjà utilisé' });
       return;
     }
+    console.log('✅ [REGISTER] Email disponible');
 
     // Générer un code à 4 chiffres
     const code = generateVerificationCode();
+    console.log(`🔢 [REGISTER] Code généré: ${code}`);
 
     // Supprimer les anciens codes pour cet email
+    console.log('🗑️ [REGISTER] Suppression des anciens codes...');
     await VerificationCode.deleteMany({ email });
 
     // Créer un nouveau code
+    console.log('💾 [REGISTER] Sauvegarde du nouveau code...');
     await VerificationCode.create({
       email,
       code,
       expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
     });
+    console.log('✅ [REGISTER] Code sauvegardé en base de données');
 
-    // Envoyer l'email
-    await sendVerificationEmail(email, code, name);
+    // Envoyer l'email avec timeout
+    console.log('📨 [REGISTER] Tentative d\'envoi de l\'email...');
+    const emailTimeout = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Email timeout')), 8000) // 8 secondes max
+    );
+    
+    await Promise.race([
+      sendVerificationEmail(email, code, name),
+      emailTimeout
+    ]);
 
+    const duration = Date.now() - startTime;
+    console.log(`✅ [REGISTER] Email envoyé avec succès en ${duration}ms`);
     res.json({ message: 'Code de vérification envoyé' });
   } catch (error: any) {
-    console.error('Send verification code error:', error);
-    res.status(500).json({ 
-      message: 'Erreur lors de l\'envoi du code',
-      error: error.message 
-    });
+    const duration = Date.now() - startTime;
+    console.error(`❌ [REGISTER] Erreur après ${duration}ms:`, error);
+    
+    // Si c'est un timeout d'email, on informe l'utilisateur différemment
+    if (error.message === 'Email timeout' || error.code === 'ETIMEDOUT') {
+      console.log('⏱️ [REGISTER] Timeout d\'envoi d\'email détecté');
+      res.status(503).json({ 
+        message: 'Le service d\'email est temporairement indisponible. Réessaye dans quelques instants.',
+        code: 'EMAIL_TIMEOUT'
+      });
+    } else {
+      res.status(500).json({ 
+        message: 'Erreur lors de l\'envoi du code',
+        error: error.message 
+      });
+    }
   }
 };
 
