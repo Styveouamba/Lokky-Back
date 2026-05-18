@@ -22,6 +22,9 @@ import { errorHandler } from './middleware/errorHandler';
 
 const app = express();
 
+// Trust the reverse proxy (Render) to allow express-rate-limit to get the real user IP
+app.set('trust proxy', 1);
+
 // Middlewares globaux
 app.use(helmet());
 app.use(cors({
